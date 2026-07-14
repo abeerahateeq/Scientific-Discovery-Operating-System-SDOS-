@@ -1,0 +1,6 @@
+{
+  "name": "Scientific Discovery Operating System",
+  "description": "A full-stack scientific discovery platform with multi-agent evolutionary tournaments, temporal knowledge graphs, missing link predictions, and experimental protocol simulation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

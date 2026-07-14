@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-bg: #0A0B0D;
+  --color-brand-sidebar: #07080A;
+  --color-brand-header: #0F1115;
+  --color-brand-card: #16181D;
+  --color-brand-border: #1E293B;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+body {
+  background-color: #0A0B0D;
+  color: #94a3b8; /* text-slate-400 */
+  font-size: 11px;
+}
+
+/* Custom compact scrollbars matching high density dashboard design */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: #07080A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #38bdf8;
+}
