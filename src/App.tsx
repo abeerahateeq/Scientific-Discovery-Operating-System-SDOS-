@@ -4,13 +4,17 @@ import {
   GraphNode, 
   GraphLink, 
   Hypothesis, 
-  DiscoveryResponse 
+  DiscoveryResponse,
+  Bounty,
+  InterdisciplinaryExchangeLog
 } from "./types";
 import KnowledgeGraph from "./components/KnowledgeGraph";
 import LiteratureIngest from "./components/LiteratureIngest";
 import AgentPipeline from "./components/AgentPipeline";
 import HypothesisDetail from "./components/HypothesisDetail";
 import GlobalGapDetector from "./components/GlobalGapDetector";
+import DiscoveryMarket from "./components/DiscoveryMarket";
+import HypothesisCompare from "./components/HypothesisCompare";
 import { 
   Cpu, 
   Network, 
@@ -25,11 +29,13 @@ import {
   ArrowRight,
   TrendingUp,
   X,
-  Compass
+  Compass,
+  Award,
+  GitCompare
 } from "lucide-react";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "graph" | "literature" | "hypotheses" | "gaps">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "graph" | "literature" | "hypotheses" | "gaps" | "market">("dashboard");
   
   // App state
   const [papers, setPapers] = useState<ScientificPaper[]>([]);
@@ -37,6 +43,12 @@ export default function App() {
   const [links, setLinks] = useState<GraphLink[]>([]);
   const [hypotheses, setHypotheses] = useState<Hypothesis[]>([]);
   const [agentLogs, setAgentLogs] = useState<{ agent: any; message: string; timestamp: string }[]>([]);
+
+  // Bounties & Feedback states
+  const [bounties, setBounties] = useState<Bounty[]>([]);
+  const [isCreatingBounty, setIsCreatingBounty] = useState(false);
+  const [isLinkingBounty, setIsLinkingBounty] = useState(false);
+  const [isSavingFeedback, setIsSavingFeedback] = useState(false);
 
   // Autonomous Overnight Run state
   const [isAutonomousRunning, setIsAutonomousRunning] = useState(false);
@@ -56,6 +68,12 @@ export default function App() {
 
   // Selected hypothesis detail
   const [selectedHypothesis, setSelectedHypothesis] = useState<Hypothesis | null>(null);
+
+  // Compare Mode State
+  const [isCompareMode, setIsCompareMode] = useState(false);
+  const [compareHypoA, setCompareHypoA] = useState<Hypothesis | null>(null);
+  const [compareHypoB, setCompareHypoB] = useState<Hypothesis | null>(null);
+  const [compareSlot, setCompareSlot] = useState<"A" | "B">("A");
 
   // Loading states
   const [isIngesting, setIsIngesting] = useState(false);
@@ -79,6 +97,10 @@ export default function App() {
       const hypoRes = await fetch("/api/hypotheses");
       const hypoData = await hypoRes.json();
       setHypotheses(hypoData);
+
+      const bountiesRes = await fetch("/api/bounties");
+      const bountiesData = await bountiesRes.json();
+      setBounties(bountiesData);
 
       // Auto-select first hypothesis if available
       if (hypoData.length > 0 && !selectedHypothesis) {
@@ -248,6 +270,71 @@ export default function App() {
     return null;
   };
 
+  // Create high-value scientific bounty challenge
+  const handleCreateBounty = async (bountyData: Omit<Bounty, "id" | "createdAt" | "status">) => {
+    setIsCreatingBounty(true);
+    try {
+      const res = await fetch("/api/bounties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bountyData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchData();
+      }
+    } catch (err) {
+      console.error("Error creating scientific bounty:", err);
+    } finally {
+      setIsCreatingBounty(false);
+    }
+  };
+
+  // Link hypothesis to bounty as proof claimant
+  const handleLinkHypothesisToBounty = async (bountyId: string, hypothesisId: string) => {
+    setIsLinkingBounty(true);
+    try {
+      const res = await fetch("/api/bounties/link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bountyId, hypothesisId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchData();
+        // Update selected hypothesis if applicable
+        if (selectedHypothesis?.id === hypothesisId) {
+          setSelectedHypothesis(data.hypothesis);
+        }
+      }
+    } catch (err) {
+      console.error("Error linking hypothesis to bounty:", err);
+    } finally {
+      setIsLinkingBounty(false);
+    }
+  };
+
+  // Register manual outcome status to global track record
+  const handleSaveFeedback = async (id: string, status: "success" | "failure" | "modification", notes: string) => {
+    setIsSavingFeedback(true);
+    try {
+      const res = await fetch(`/api/hypotheses/${id}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, notes })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchData();
+        setSelectedHypothesis(data.hypothesis);
+      }
+    } catch (err) {
+      console.error("Error saving manual feedback:", err);
+    } finally {
+      setIsSavingFeedback(false);
+    }
+  };
+
   // Trigger Autonomous overnight sweep run
   const handleAutonomousRun = async () => {
     setIsAutonomousRunning(true);
@@ -399,6 +486,19 @@ export default function App() {
               <Compass className="w-3.5 h-3.5 shrink-0" />
               Global Research Gaps
             </button>
+
+            <button
+              id="tab-market-btn"
+              onClick={() => setActiveTab("market")}
+              className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-[11px] font-medium transition-all ${
+                activeTab === "market"
+                  ? "bg-sky-500/10 text-sky-400 border-l-2 border-sky-500 pl-2"
+                  : "text-slate-400 hover:bg-[#16181D] hover:text-slate-200"
+              }`}
+            >
+              <Award className="w-3.5 h-3.5 shrink-0" />
+              Discovery Market
+            </button>
           </div>
 
           {/* Quick-Help / OS System Console */}
@@ -528,41 +628,114 @@ export default function App() {
               />
             )}
 
+            {activeTab === "market" && (
+              <DiscoveryMarket
+                bounties={bounties}
+                hypotheses={hypotheses}
+                onCreateBounty={handleCreateBounty}
+                onLinkHypothesisToBounty={handleLinkHypothesisToBounty}
+                isCreatingBounty={isCreatingBounty}
+                isLinking={isLinkingBounty}
+              />
+            )}
+
             {activeTab === "hypotheses" && (
               <div id="hypotheses-split-view" className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-full">
                 {/* Left Column list of hypotheses */}
                 <div className="bg-[#0F1115] border border-slate-800 rounded p-3 flex flex-col gap-3 overflow-y-auto max-h-[300px] lg:max-h-full">
-                  <div className="flex items-center gap-1.5 border-b border-slate-800 pb-2">
-                    <Bookmark className="text-slate-400 w-4 h-4" />
-                    <h3 className="text-slate-200 font-bold uppercase tracking-wider text-[10px]">Synthesized Hypotheses</h3>
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-1.5">
+                      <Bookmark className="text-slate-400 w-4 h-4" />
+                      <h3 className="text-slate-200 font-bold uppercase tracking-wider text-[10px]">Synthesized Hypotheses</h3>
+                    </div>
+
+                    {/* Compare Toggle Switch */}
+                    <button
+                      id="hypotheses-compare-toggle"
+                      onClick={() => {
+                        setIsCompareMode(!isCompareMode);
+                        // Auto populate slots to make it easy
+                        if (!isCompareMode && hypotheses.length >= 2) {
+                          setCompareHypoA(hypotheses[0]);
+                          setCompareHypoB(hypotheses[1]);
+                        }
+                      }}
+                      className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border transition-all uppercase tracking-wide flex items-center gap-1 cursor-pointer ${
+                        isCompareMode
+                          ? "bg-violet-500/20 text-violet-400 border-violet-500/30"
+                          : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-300"
+                      }`}
+                      title="Toggle side-by-side comparison workspace"
+                    >
+                      <GitCompare className="w-3 h-3" />
+                      {isCompareMode ? "Comparing ON" : "Compare"}
+                    </button>
                   </div>
 
                   <div className="flex flex-col gap-2 overflow-y-auto">
                     {hypotheses.map((hypo) => {
-                      const isSelected = selectedHypothesis?.id === hypo.id;
+                      const isSelected = !isCompareMode && selectedHypothesis?.id === hypo.id;
+                      const isCompareA = isCompareMode && compareHypoA?.id === hypo.id;
+                      const isCompareB = isCompareMode && compareHypoB?.id === hypo.id;
+
+                      const handleSelect = () => {
+                        if (isCompareMode) {
+                          if (compareSlot === "A") {
+                            setCompareHypoA(hypo);
+                            setCompareSlot("B"); // Auto-advance to B
+                          } else {
+                            setCompareHypoB(hypo);
+                            setCompareSlot("A"); // Toggle back to A
+                          }
+                        } else {
+                          setSelectedHypothesis(hypo);
+                        }
+                      };
+
                       return (
                         <button
                           key={hypo.id}
-                          onClick={() => setSelectedHypothesis(hypo)}
-                          className={`w-full text-left p-2.5 rounded border transition-all flex flex-col gap-1.5 ${
+                          onClick={handleSelect}
+                          className={`w-full text-left p-2.5 rounded border transition-all flex flex-col gap-1.5 relative ${
                             isSelected
                               ? "bg-sky-500/10 border-sky-500 shadow-md shadow-sky-950/10"
-                              : "bg-[#07080A] hover:bg-[#16181D] border-slate-800"
+                              : isCompareA
+                                ? "bg-sky-500/5 border-sky-500/50"
+                                : isCompareB
+                                  ? "bg-violet-500/5 border-violet-500/50"
+                                  : "bg-[#07080A] hover:bg-[#16181D] border-slate-800"
                           }`}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <h4 className={`text-[11px] font-bold font-sans leading-snug line-clamp-2 ${isSelected ? "text-sky-400" : "text-slate-200"}`}>
+                            <h4 className={`text-[11px] font-bold font-sans leading-snug line-clamp-2 ${
+                              isSelected ? "text-sky-400" : isCompareA ? "text-sky-400" : isCompareB ? "text-violet-400" : "text-slate-200"
+                            }`}>
                               {hypo.title}
                             </h4>
-                            {hypo.status === "verified" ? (
-                              <span className="text-[8px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-1 rounded uppercase tracking-wider shrink-0">
-                                Verified
-                              </span>
-                            ) : (
-                              <span className="text-[8px] font-mono font-bold text-amber-500 bg-amber-500/10 px-1 rounded uppercase tracking-wider shrink-0">
-                                Draft
-                              </span>
-                            )}
+                            
+                            <div className="flex gap-1 shrink-0">
+                              {isCompareA && (
+                                <span className="text-[7.5px] font-mono font-bold text-sky-400 bg-sky-500/20 px-1 py-0.2 rounded uppercase tracking-wider">
+                                  SLOT A
+                                </span>
+                              )}
+                              {isCompareB && (
+                                <span className="text-[7.5px] font-mono font-bold text-violet-400 bg-violet-500/20 px-1 py-0.2 rounded uppercase tracking-wider">
+                                  SLOT B
+                                </span>
+                              )}
+                              {!isCompareA && !isCompareB && (
+                                hypo.status === "verified" ? (
+                                  <span className="text-[8px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-1 rounded uppercase tracking-wider shrink-0">
+                                    Verified
+                                  </span>
+                                ) : (
+                                  <span className="text-[8px] font-mono font-bold text-amber-500 bg-amber-500/10 px-1 rounded uppercase tracking-wider shrink-0">
+                                    Draft
+                                  </span>
+                                )
+                              )}
+                            </div>
                           </div>
                           <p className="text-[10px] text-slate-500 font-sans line-clamp-2 leading-relaxed">
                             {hypo.description}
@@ -579,15 +752,31 @@ export default function App() {
 
                 {/* Right Column hypothesis detailed inspection report */}
                 <div className="lg:col-span-2 h-full">
-                  <HypothesisDetail
-                    hypothesis={selectedHypothesis}
-                    onVerify={handleVerifyHypothesis}
-                    isVerifying={isVerifyingHypothesis}
-                    papers={papers}
-                    onSimulateExperiment={handleSimulateExperiment}
-                    isSimulatingExperiment={isSimulatingExperiment}
-                    onAdvancePhase={handleAdvancePhase}
-                  />
+                  {isCompareMode ? (
+                    <HypothesisCompare
+                      hypoA={compareHypoA}
+                      hypoB={compareHypoB}
+                      activeSlot={compareSlot}
+                      setActiveSlot={setCompareSlot}
+                      onClearSlot={(slot) => {
+                        if (slot === "A") setCompareHypoA(null);
+                        else setCompareHypoB(null);
+                      }}
+                      onCloseCompare={() => setIsCompareMode(false)}
+                    />
+                  ) : (
+                    <HypothesisDetail
+                      hypothesis={selectedHypothesis}
+                      onVerify={handleVerifyHypothesis}
+                      isVerifying={isVerifyingHypothesis}
+                      papers={papers}
+                      onSimulateExperiment={handleSimulateExperiment}
+                      isSimulatingExperiment={isSimulatingExperiment}
+                      onAdvancePhase={handleAdvancePhase}
+                      onSaveFeedback={handleSaveFeedback}
+                      isSavingFeedback={isSavingFeedback}
+                    />
+                  )}
                 </div>
               </div>
             )}

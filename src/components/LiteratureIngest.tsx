@@ -34,7 +34,7 @@ export default function LiteratureIngest({
   isIngesting,
   onUploadSuccess
 }: LiteratureIngestProps) {
-  const [ingestMode, setIngestMode] = useState<"pdf" | "manual">("pdf");
+  const [ingestMode, setIngestMode] = useState<"pdf" | "manual" | "csv">("pdf");
   
   // Manual Ingest State
   const [title, setTitle] = useState("");
@@ -50,6 +50,22 @@ export default function LiteratureIngest({
   const [uploadLogs, setUploadLogs] = useState<string[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [dragOver, setDragOver] = useState(false);
+
+  // Bulk CSV Import State
+  interface CsvRecord {
+    title: string;
+    authors: string;
+    journal: string;
+    year: number;
+    abstract: string;
+    status: "pending" | "processing" | "completed" | "failed";
+    progress: number;
+    error?: string;
+  }
+  const [csvRecords, setCsvRecords] = useState<CsvRecord[]>([]);
+  const [isProcessingCsv, setIsProcessingCsv] = useState(false);
+  const csvFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [csvDragOver, setCsvDragOver] = useState(false);
 
   const handleSubmitManual = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,6 +153,189 @@ export default function LiteratureIngest({
     }
   };
 
+  // CSV Ingestion & Parsing Mechanics
+  const parseCsvContent = (text: string): CsvRecord[] => {
+    const lines = text.split(/\r?\n/);
+    if (lines.length < 2) return [];
+
+    // Parse headers
+    const headers = lines[0].split(",").map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+    const titleIdx = headers.findIndex(h => h.includes("title"));
+    const authorsIdx = headers.findIndex(h => h.includes("author") || h.includes("authors"));
+    const journalIdx = headers.findIndex(h => h.includes("journal"));
+    const yearIdx = headers.findIndex(h => h.includes("year"));
+    const abstractIdx = headers.findIndex(h => h.includes("abstract") || h.includes("desc"));
+
+    const records: CsvRecord[] = [];
+
+    const parseCsvLine = (line: string): string[] => {
+      const result: string[] = [];
+      let current = "";
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"' || char === "'") {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim().replace(/^["']|["']$/g, ''));
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim().replace(/^["']|["']$/g, ''));
+      return result;
+    };
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const cols = parseCsvLine(line);
+      if (cols.length < 2) continue;
+
+      const titleVal = titleIdx !== -1 && cols[titleIdx] ? cols[titleIdx] : "";
+      const abstractVal = abstractIdx !== -1 && cols[abstractIdx] ? cols[abstractIdx] : "";
+      
+      if (!titleVal || !abstractVal) continue;
+
+      records.push({
+        title: titleVal,
+        authors: authorsIdx !== -1 && cols[authorsIdx] ? cols[authorsIdx] : "Unknown Author",
+        journal: journalIdx !== -1 && cols[journalIdx] ? cols[journalIdx] : "Unpublished Research",
+        year: yearIdx !== -1 ? (parseInt(cols[yearIdx]) || 2026) : 2026,
+        abstract: abstractVal,
+        status: "pending",
+        progress: 0
+      });
+    }
+
+    return records;
+  };
+
+  const handleCsvFileUpload = async (file: File) => {
+    if (!file) return;
+    setErrorMsg("");
+    setSuccessMsg("");
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      try {
+        const parsed = parseCsvContent(text);
+        if (parsed.length === 0) {
+          throw new Error("No valid bibliography records containing both 'title' and 'abstract' headers found in CSV file.");
+        }
+        setCsvRecords(parsed);
+        setSuccessMsg(`Successfully parsed ${parsed.length} scientific records from CSV bibliography.`);
+        setTimeout(() => setSuccessMsg(""), 5000);
+      } catch (err: any) {
+        setErrorMsg(err.message || "Failed to parse CSV layout.");
+      }
+    };
+    reader.onerror = () => {
+      setErrorMsg("Failed to read CSV file.");
+    };
+    reader.readAsText(file);
+  };
+
+  const handleProcessCsv = async () => {
+    if (csvRecords.length === 0 || isProcessingCsv) return;
+    setIsProcessingCsv(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    for (let idx = 0; idx < csvRecords.length; idx++) {
+      if (csvRecords[idx].status === "completed") continue;
+
+      setCsvRecords(prev => {
+        const updated = [...prev];
+        updated[idx].status = "processing";
+        updated[idx].progress = 10;
+        return updated;
+      });
+
+      // Staged progress step mock
+      for (let p = 25; p <= 85; p += 20) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        setCsvRecords(prev => {
+          const updated = [...prev];
+          if (updated[idx].status === "processing") {
+            updated[idx].progress = p;
+          }
+          return updated;
+        });
+      }
+
+      try {
+        await onIngest({
+          title: csvRecords[idx].title,
+          authors: csvRecords[idx].authors,
+          journal: csvRecords[idx].journal,
+          year: csvRecords[idx].year,
+          abstract: csvRecords[idx].abstract
+        });
+
+        setCsvRecords(prev => {
+          const updated = [...prev];
+          updated[idx].status = "completed";
+          updated[idx].progress = 100;
+          return updated;
+        });
+      } catch (err: any) {
+        console.error("Bulk ingestion step error:", err);
+        setCsvRecords(prev => {
+          const updated = [...prev];
+          updated[idx].status = "failed";
+          updated[idx].progress = 100;
+          updated[idx].error = err.message || "Extraction failed";
+          return updated;
+        });
+      }
+    }
+
+    setIsProcessingCsv(false);
+    setSuccessMsg("Bulk ingestion pipeline fully completed!");
+    if (onUploadSuccess) {
+      await onUploadSuccess();
+    }
+  };
+
+  const handleLoadSampleCsv = () => {
+    setSuccessMsg("");
+    setErrorMsg("");
+    const samples: CsvRecord[] = [
+      {
+        title: "Localized Spin-Glass Isomorphism in High-Dimensional Protein States",
+        authors: "Dr. Evelyn Vance, Prof. Alan Turing Jr.",
+        journal: "Biophysical Physics Letters",
+        year: 2026,
+        abstract: "Macromolecular folding pathways are notoriously complex and exhibit spin-glass thermodynamic states. This study models 3D protein fold configurations as planar stabilizer codes. We prove mathematical stabilizer boundaries represent energetic phase transition zones.",
+        status: "pending",
+        progress: 0
+      },
+      {
+        title: "Dose-Dependent MicroRNA Stabilization Dynamics of Amyloid Precursor Cleavage",
+        authors: "Dr. Sarah Lin-Mendoza, Prof. Arthur Pendelton",
+        journal: "Journal of Neurodegenerative Pathways",
+        year: 2025,
+        abstract: "Inhibiting Gene X expression blocks the hyperphosphorylation of amyloid precursor proteins. Here we characterize microRNA triggers that stabilize Protein A conformations under sub-nanomolar therapeutic dosage without triggering cortical microglia apoptosis.",
+        status: "pending",
+        progress: 0
+      },
+      {
+        title: "Topological Error-Correcting Manifolds for Membraneless Cellular Assemblies",
+        authors: "Prof. Kenneth Takahashi, Dr. Elizabeth Vance",
+        journal: "Advanced Macromolecules and Biostructures",
+        year: 2026,
+        abstract: "Cellular assemblies exhibit phase separation boundaries. By applying topological stabilizer codes from quantum error-correction, we simulate self-assembling macromolecular lattices. Results demonstrate a 45% reduction in computational phase prediction error.",
+        status: "pending",
+        progress: 0
+      }
+    ];
+    setCsvRecords(samples);
+  };
+
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(true);
@@ -166,26 +365,36 @@ export default function LiteratureIngest({
         </div>
 
         {/* Mode Toggle Tabs */}
-        <div className="grid grid-cols-2 gap-1 bg-[#07080A] border border-slate-850 p-1 rounded">
+        <div className="grid grid-cols-3 gap-1 bg-[#07080A] border border-slate-850 p-1 rounded">
           <button
             onClick={() => { setDragOver(false); setIngestMode("pdf"); }}
-            className={`py-1 rounded text-[10px] uppercase font-bold tracking-wide transition-all ${
+            className={`py-1 rounded text-[9.5px] uppercase font-bold tracking-wide transition-all ${
               ingestMode === "pdf"
                 ? "bg-emerald-600 text-white"
-                : "text-slate-500 hover:text-slate-300"
+                : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            PDF Pipeline
+            PDF
           </button>
           <button
-            onClick={() => setIngestMode("manual")}
-            className={`py-1 rounded text-[10px] uppercase font-bold tracking-wide transition-all ${
+            onClick={() => { setDragOver(false); setIngestMode("manual"); }}
+            className={`py-1 rounded text-[9.5px] uppercase font-bold tracking-wide transition-all ${
               ingestMode === "manual"
                 ? "bg-emerald-600 text-white"
-                : "text-slate-500 hover:text-slate-300"
+                : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            Manual Metadata
+            Manual
+          </button>
+          <button
+            onClick={() => { setDragOver(false); setIngestMode("csv"); }}
+            className={`py-1 rounded text-[9.5px] uppercase font-bold tracking-wide transition-all ${
+              ingestMode === "csv"
+                ? "bg-emerald-600 text-white"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Bulk CSV
           </button>
         </div>
 
@@ -361,6 +570,150 @@ export default function LiteratureIngest({
               )}
             </button>
           </form>
+        )}
+
+        {/* MODE C: Bulk CSV Bibliography Ingestion */}
+        {ingestMode === "csv" && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <p className="text-slate-500 font-sans leading-relaxed text-[10px]">
+                Import raw bibliography CSV datasets containing multiple literature records at once.
+              </p>
+              <button
+                type="button"
+                onClick={handleLoadSampleCsv}
+                className="text-[9px] font-mono text-emerald-400 border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 rounded px-1.5 py-0.5 uppercase tracking-wide font-bold shrink-0"
+              >
+                Load Sample
+              </button>
+            </div>
+
+            {/* Drag and Drop CSV Area */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setCsvDragOver(true); }}
+              onDragLeave={() => setCsvDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setCsvDragOver(false);
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  handleCsvFileUpload(e.dataTransfer.files[0]);
+                }
+              }}
+              onClick={() => csvFileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-lg p-5 flex flex-col items-center justify-center gap-2.5 cursor-pointer transition-all ${
+                csvDragOver
+                  ? "border-emerald-400 bg-emerald-500/5"
+                  : "border-slate-800 bg-[#07080A] hover:border-slate-700"
+              }`}
+            >
+              <input
+                ref={csvFileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={(e) => e.target.files?.[0] && handleCsvFileUpload(e.target.files[0])}
+                className="hidden"
+              />
+              <div className="p-2 rounded-full bg-slate-900 border border-slate-850">
+                <Upload className={`w-5 h-5 ${isProcessingCsv ? "text-emerald-400 animate-bounce" : "text-slate-500"}`} />
+              </div>
+              <div className="text-center flex flex-col gap-0.5">
+                <span className="text-slate-300 font-bold">Drag & Drop CSV here</span>
+                <span className="text-slate-600 text-[10px] font-sans">Must contain title and abstract headers</span>
+              </div>
+            </div>
+
+            {/* Parsed List with Progress Bars */}
+            {csvRecords.length > 0 && (
+              <div className="flex flex-col gap-2 border border-slate-800 rounded bg-[#07080A] p-2.5 max-h-[220px] overflow-y-auto">
+                <div className="flex justify-between items-center border-b border-slate-850 pb-1 mb-1">
+                  <span className="font-mono text-[8.5px] text-slate-500 uppercase select-none">
+                    Queue: {csvRecords.length} Records
+                  </span>
+                  <button
+                    onClick={() => setCsvRecords([])}
+                    className="text-[8px] text-rose-400 hover:text-rose-300 uppercase font-mono tracking-wider font-bold cursor-pointer"
+                  >
+                    Clear List
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2.5">
+                  {csvRecords.map((rec, i) => (
+                    <div key={i} className="flex flex-col gap-1 text-[10px] border-b border-slate-900/50 pb-2 last:border-0 last:pb-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-slate-300 font-bold leading-tight font-sans line-clamp-1 select-all">
+                          {rec.title}
+                        </span>
+                        
+                        {rec.status === "pending" && (
+                          <span className="text-[8px] font-mono text-slate-500 bg-slate-900 px-1 py-0.2 rounded uppercase shrink-0">
+                            Pending
+                          </span>
+                        )}
+                        {rec.status === "processing" && (
+                          <span className="text-[8px] font-mono text-sky-400 bg-sky-500/10 px-1 py-0.2 rounded uppercase shrink-0 animate-pulse flex items-center gap-0.5">
+                            <RefreshCw className="w-2 h-2 animate-spin" />
+                            Extracting
+                          </span>
+                        )}
+                        {rec.status === "completed" && (
+                          <span className="text-[8px] font-mono text-emerald-400 bg-emerald-500/10 px-1 py-0.2 rounded uppercase shrink-0 font-bold">
+                            Success
+                          </span>
+                        )}
+                        {rec.status === "failed" && (
+                          <span className="text-[8px] font-mono text-rose-400 bg-rose-500/10 px-1 py-0.2 rounded uppercase shrink-0 font-bold" title={rec.error}>
+                            Failed
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Progress Bar Container */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 bg-slate-950 border border-slate-900 rounded-full h-1.5 overflow-hidden">
+                          <div 
+                            className={`h-full transition-all duration-300 ${
+                              rec.status === "failed" 
+                                ? "bg-rose-500" 
+                                : rec.status === "completed" 
+                                  ? "bg-emerald-500" 
+                                  : "bg-sky-500"
+                            }`}
+                            style={{ width: `${rec.progress}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-[8px] text-slate-500 w-6 text-right select-none">
+                          {rec.progress}%
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Submit Action */}
+            {csvRecords.length > 0 && (
+              <button
+                type="button"
+                onClick={handleProcessCsv}
+                disabled={isProcessingCsv}
+                className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 transition-all text-white font-bold py-2 rounded text-[11px] uppercase tracking-wider cursor-pointer mt-1"
+              >
+                {isProcessingCsv ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Executing Bulk Extraction...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                    Process Bulk Ingest
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         )}
       </div>
 

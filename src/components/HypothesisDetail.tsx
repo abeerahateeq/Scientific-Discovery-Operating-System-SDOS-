@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { Hypothesis, ScientificPaper } from "../types";
+import EvidenceExplanation from "./EvidenceExplanation";
+import { jsPDF } from "jspdf";
 import { 
   Sparkles, 
   Award, 
@@ -12,6 +14,7 @@ import {
   Clock,
   ArrowRight,
   Beaker,
+  Download,
   Database,
   Activity,
   AlertTriangle,
@@ -19,7 +22,10 @@ import {
   GitFork,
   Check,
   Zap,
-  Info
+  Info,
+  ThumbsUp,
+  ThumbsDown,
+  Edit2
 } from "lucide-react";
 
 interface HypothesisDetailProps {
@@ -30,6 +36,8 @@ interface HypothesisDetailProps {
   onSimulateExperiment?: (id: string) => Promise<void>;
   isSimulatingExperiment?: boolean;
   onAdvancePhase?: (id: string, phase: string) => Promise<string | null>;
+  onSaveFeedback?: (id: string, status: 'success' | 'failure' | 'modification', notes: string) => Promise<void>;
+  isSavingFeedback?: boolean;
 }
 
 const DISCOVERY_PHASES = [
@@ -47,10 +55,26 @@ export default function HypothesisDetail({
   papers,
   onSimulateExperiment,
   isSimulatingExperiment = false,
-  onAdvancePhase
+  onAdvancePhase,
+  onSaveFeedback,
+  isSavingFeedback = false
 }: HypothesisDetailProps) {
   const [learningFeedback, setLearningFeedback] = useState<string | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
+
+  // States for feedback capture
+  const [feedbackStatus, setFeedbackStatus] = useState<'success' | 'failure' | 'modification' | null>(null);
+  const [feedbackNotes, setFeedbackNotes] = useState("");
+  const [feedbackSaved, setFeedbackSaved] = useState(false);
+
+  // Sync state with active hypothesis
+  React.useEffect(() => {
+    if (hypothesis) {
+      setFeedbackStatus(hypothesis.feedbackStatus || null);
+      setFeedbackNotes(hypothesis.feedbackNotes || "");
+      setFeedbackSaved(false);
+    }
+  }, [hypothesis?.id]);
 
   if (!hypothesis) {
     return (
@@ -188,6 +212,169 @@ export default function HypothesisDetail({
 
   const contradictions = getContradictions(hypothesis);
 
+  // Download formatted PDF summary protocol
+  const handleDownloadProtocol = () => {
+    if (!hypothesis) return;
+    
+    const doc = new jsPDF();
+    
+    doc.setProperties({
+      title: `${hypothesis.title} - Scientific Discovery Protocol`,
+      subject: 'Scientific Discovery Operating System (SDOS) Simulation Report',
+      author: 'SDOS Multi-Agent Pipeline',
+      keywords: 'hypothesis, scientific, discovery, protocol, simulation',
+    });
+
+    // Color theme colors
+    const primaryColor = [15, 23, 42]; // Slate 900
+    const skyAccent = [14, 165, 233]; // Sky 500
+    const charcoal = [64, 74, 86];
+
+    // Page margin
+    const marginX = 15;
+    let currentY = 20;
+
+    // Header Title
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    const titleLines = doc.splitTextToSize(hypothesis.title, 180);
+    doc.text(titleLines, marginX, currentY);
+    currentY += (titleLines.length * 7);
+
+    // Subtitle & Metadata
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
+    doc.text(`Generated: ${new Date().toLocaleDateString()}  |  ID: ${hypothesis.id}  |  Current Phase: ${hypothesis.discoveryPhase || "Formulated"}`, marginX, currentY);
+    currentY += 8;
+
+    // Horiz line
+    doc.setDrawColor(203, 213, 225); // slate-300
+    doc.setLineWidth(0.5);
+    doc.line(marginX, currentY, 195, currentY);
+    currentY += 10;
+
+    // Section 1: Executive Summary
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(skyAccent[0], skyAccent[1], skyAccent[2]);
+    doc.text("1. RESEARCH QUERY & EXECUTIVE SUMMARY", marginX, currentY);
+    currentY += 6;
+
+    doc.setFont("Helvetica", "italic");
+    doc.setFontSize(9.5);
+    doc.setTextColor(100, 110, 120);
+    const queryLines = doc.splitTextToSize(`Original query: "${hypothesis.query}"`, 180);
+    doc.text(queryLines, marginX, currentY);
+    currentY += (queryLines.length * 5.5) + 3;
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    const descLines = doc.splitTextToSize(hypothesis.description, 180);
+    doc.text(descLines, marginX, currentY);
+    currentY += (descLines.length * 5) + 10;
+
+    // Section 2: Discovery Value Score
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(skyAccent[0], skyAccent[1], skyAccent[2]);
+    doc.text("2. DISCOVERY VALUE SCORE (DVS) COMPOSITION", marginX, currentY);
+    currentY += 6;
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    
+    doc.text(`Composite DVS Index: ${dvsData.dvs} pts / 100`, marginX, currentY);
+    currentY += 5.5;
+
+    doc.setFontSize(9);
+    doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
+    doc.text(`• Scientific Novelty: ${percent(dvsData.novelty)}%`, marginX + 5, currentY);
+    doc.text(`• Clinical Feasibility: ${percent(hypothesis.clinicalFeasibility)}%`, marginX + 90, currentY);
+    currentY += 5;
+    doc.text(`• Projected Target Impact: ${percent(dvsData.impact)}%`, marginX + 5, currentY);
+    doc.text(`• Synthesis Cost Index: ${percent(dvsData.cost)}%`, marginX + 90, currentY);
+    currentY += 5;
+    doc.text(`• Computational Feasibility: ${percent(hypothesis.computationalFeasibility)}%`, marginX + 5, currentY);
+    doc.text(`• Synthesis Duration: ${dvsData.time.toFixed(1)} years`, marginX + 90, currentY);
+    currentY += 10;
+
+    // Section 3: Theoretical Implications & Steps
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(skyAccent[0], skyAccent[1], skyAccent[2]);
+    doc.text("3. SYSTEM SYNTHESIZED EXPERIMENTAL STEPS", marginX, currentY);
+    currentY += 6;
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+
+    const implicationsList = getImplications(hypothesis);
+    implicationsList.forEach((imp, i) => {
+      const impLines = doc.splitTextToSize(`[Step ${i + 1}] ${imp}`, 180);
+      doc.text(impLines, marginX, currentY);
+      currentY += (impLines.length * 5) + 1.5;
+    });
+    currentY += 8;
+
+    // Section 4: Conflict Resolution & Contradictions
+    if (contradictions.length > 0) {
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(skyAccent[0], skyAccent[1], skyAccent[2]);
+      doc.text("4. IDENTIFIED CONTRADICTIONS & RESOLUTIONS", marginX, currentY);
+      currentY += 6;
+
+      contradictions.forEach((contra, index) => {
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(charcoal[0], charcoal[1], charcoal[2]);
+        doc.text(`Contradiction Match #${index + 1}:`, marginX, currentY);
+        currentY += 4.5;
+
+        doc.setFont("Helvetica", "normal");
+        const claimALines = doc.splitTextToSize(`Source A (${contra.paperA}): "${contra.claimA}"`, 175);
+        doc.text(claimALines, marginX + 4, currentY);
+        currentY += (claimALines.length * 4.5) + 1.5;
+
+        const claimBLines = doc.splitTextToSize(`Source B (${contra.paperB}): "${contra.claimB}"`, 175);
+        doc.text(claimBLines, marginX + 4, currentY);
+        currentY += (claimBLines.length * 4.5) + 2;
+
+        doc.setFont("Helvetica", "bold");
+        doc.text("Resolution Strategy:", marginX + 4, currentY);
+        currentY += 4.5;
+        doc.setFont("Helvetica", "normal");
+        const resLines = doc.splitTextToSize(contra.resolution, 175);
+        doc.text(resLines, marginX + 4, currentY);
+        currentY += (resLines.length * 4.5) + 2;
+
+        if (contra.resolvingExperiment) {
+          doc.setFont("Helvetica", "bold");
+          doc.text("Resolving Experiment:", marginX + 4, currentY);
+          currentY += 4.5;
+          doc.setFont("Helvetica", "normal");
+          const expLines = doc.splitTextToSize(contra.resolvingExperiment, 175);
+          doc.text(expLines, marginX + 4, currentY);
+          currentY += (expLines.length * 4.5) + 4;
+        }
+      });
+      currentY += 4;
+    }
+
+    // Footnote
+    doc.setFont("Helvetica", "italic");
+    doc.setFontSize(8);
+    doc.setTextColor(156, 163, 175);
+    doc.text("Confidential Research Protocol. Generated by Google AI Studio Scientific Discovery OS (SDOS) Node Server.", marginX, 280);
+
+    doc.save(`SDOS_Protocol_Protocol_${hypothesis.id}.pdf`);
+  };
+
   // Advance phase handler
   const handleAdvancePhase = async (phaseId: string) => {
     if (!onAdvancePhase || isAdvancing) return;
@@ -218,25 +405,37 @@ export default function HypothesisDetail({
           <p className="text-[10px] text-slate-400 font-sans italic">Query context: "{hypothesis.query}"</p>
         </div>
 
-        {hypothesis.status === "verified" ? (
-          <span className="flex items-center gap-1.5 text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded shrink-0 uppercase h-fit">
-            <CheckCircle className="w-3.5 h-3.5" />
-            Verified & Sound
-          </span>
-        ) : (
+        <div className="flex flex-row items-center gap-2 shrink-0 h-fit">
           <button
-            onClick={() => onVerify(hypothesis.id)}
-            disabled={isVerifying}
-            className="flex items-center gap-1.5 text-[9px] font-mono font-bold text-amber-500 hover:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2.5 py-1 rounded shrink-0 uppercase h-fit transition-all"
+            id="download-protocol-btn"
+            onClick={handleDownloadProtocol}
+            className="flex items-center gap-1 text-[9px] font-mono font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 px-2.5 py-1 rounded shrink-0 uppercase transition-all"
+            title="Download formatted PDF research protocol"
           >
-            {isVerifying ? (
-              <RefreshCw className="w-3 h-3 animate-spin" />
-            ) : (
-              <ShieldAlert className="w-3 h-3 animate-pulse" />
-            )}
-            {isVerifying ? "Reviewing..." : "Verify & Review"}
+            <Download className="w-3 h-3" />
+            Download Protocol
           </button>
-        )}
+
+          {hypothesis.status === "verified" ? (
+            <span className="flex items-center gap-1.5 text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded shrink-0 uppercase h-fit">
+              <CheckCircle className="w-3.5 h-3.5" />
+              Verified & Sound
+            </span>
+          ) : (
+            <button
+              onClick={() => onVerify(hypothesis.id)}
+              disabled={isVerifying}
+              className="flex items-center gap-1.5 text-[9px] font-mono font-bold text-amber-500 hover:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-2.5 py-1 rounded shrink-0 uppercase h-fit transition-all"
+            >
+              {isVerifying ? (
+                <RefreshCw className="w-3 h-3 animate-spin" />
+              ) : (
+                <ShieldAlert className="w-3 h-3 animate-pulse" />
+              )}
+              {isVerifying ? "Reviewing..." : "Verify & Review"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Living Scientific Timeline - Interactive Phase Progression */}
@@ -320,6 +519,12 @@ export default function HypothesisDetail({
           {hypothesis.description}
         </p>
       </div>
+
+      {/* Evidence Explanation Component */}
+      <EvidenceExplanation 
+        metrics={hypothesis.evidenceMetrics} 
+        hypothesisTitle={hypothesis.title} 
+      />
 
       {/* NEXT LEVEL FEATURE: Discovery Value Score (DVS) Composite Display */}
       <div className="bg-[#07080A] border border-slate-800 rounded p-3 flex flex-col gap-3 relative overflow-hidden">
@@ -688,6 +893,126 @@ export default function HypothesisDetail({
           </div>
         </div>
       )}
+
+      {/* Manual Hypothesis Feedback Capture Mechanism */}
+      <div className="bg-[#07080A] border-2 border-slate-800 rounded p-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between border-b border-slate-850 pb-1.5">
+          <div className="flex items-center gap-1.5">
+            <Beaker className="text-emerald-400 w-4 h-4" />
+            <h3 className="text-slate-100 font-bold uppercase tracking-wider text-[10px]">Manual Empirical Feedback Capture</h3>
+          </div>
+          <span className="text-[8px] font-mono text-slate-500 uppercase">Track Record Input</span>
+        </div>
+
+        <p className="text-slate-400 text-[10px] leading-relaxed font-sans">
+          Log manual test results, peer publication outcomes, or wet-lab replication states for this hypothesis. Your labels will recalibrate the global <strong>System Discovery Track Record</strong>.
+        </p>
+
+        {/* Status Selection Cards */}
+        <div className="grid grid-cols-3 gap-2">
+          {/* Success */}
+          <button
+            type="button"
+            onClick={() => {
+              setFeedbackStatus("success");
+              setFeedbackSaved(false);
+            }}
+            className={`flex flex-col items-center gap-1.5 p-2.5 rounded border font-mono text-[9.5px] uppercase transition-all ${
+              feedbackStatus === "success"
+                ? "bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-lg shadow-emerald-500/5"
+                : "bg-slate-950 border-slate-850 text-slate-400 hover:border-emerald-500/50 hover:text-emerald-300"
+            }`}
+          >
+            <ThumbsUp className="w-4 h-4" />
+            Success
+          </button>
+
+          {/* Failure */}
+          <button
+            type="button"
+            onClick={() => {
+              setFeedbackStatus("failure");
+              setFeedbackSaved(false);
+            }}
+            className={`flex flex-col items-center gap-1.5 p-2.5 rounded border font-mono text-[9.5px] uppercase transition-all ${
+              feedbackStatus === "failure"
+                ? "bg-rose-500/10 border-rose-500 text-rose-400 shadow-lg shadow-rose-500/5"
+                : "bg-slate-950 border-slate-850 text-slate-400 hover:border-rose-500/50 hover:text-rose-300"
+            }`}
+          >
+            <ThumbsDown className="w-4 h-4" />
+            Failure
+          </button>
+
+          {/* Modification */}
+          <button
+            type="button"
+            onClick={() => {
+              setFeedbackStatus("modification");
+              setFeedbackSaved(false);
+            }}
+            className={`flex flex-col items-center gap-1.5 p-2.5 rounded border font-mono text-[9.5px] uppercase transition-all ${
+              feedbackStatus === "modification"
+                ? "bg-amber-500/10 border-amber-500 text-amber-400 shadow-lg shadow-amber-500/5"
+                : "bg-slate-950 border-slate-850 text-slate-400 hover:border-amber-500/50 hover:text-amber-300"
+            }`}
+          >
+            <Edit2 className="w-4 h-4" />
+            Needs Edit
+          </button>
+        </div>
+
+        {/* Feedback Notes */}
+        <div className="flex flex-col gap-1">
+          <label className="text-[8px] font-mono text-slate-500 uppercase">Empirical/Validation Logs & Peer Comments</label>
+          <textarea
+            value={feedbackNotes}
+            onChange={(e) => {
+              setFeedbackNotes(e.target.value);
+              setFeedbackSaved(false);
+            }}
+            placeholder="E.g., Replicated successfully in wet-lab with positive binding kinetics. Manuscript submitted to Nature..."
+            className="bg-slate-950 border border-slate-850 rounded p-2 text-slate-300 font-sans text-[10.5px] focus:outline-none focus:border-sky-500 transition-colors h-14 resize-none"
+          />
+        </div>
+
+        {/* Submit feedback action */}
+        <div className="flex items-center justify-between gap-4 mt-1">
+          {feedbackSaved ? (
+            <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-semibold animate-fade-in">
+              <Check className="w-4 h-4 text-emerald-400" />
+              Outcome registered to discovery track record!
+            </div>
+          ) : (
+            <div className="text-[8.5px] text-slate-500 font-sans italic">
+              Awaiting save to finalize statistical trends.
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={!feedbackStatus || isSavingFeedback}
+            onClick={async () => {
+              if (onSaveFeedback && feedbackStatus) {
+                try {
+                  await onSaveFeedback(hypothesis.id, feedbackStatus, feedbackNotes);
+                  setFeedbackSaved(true);
+                } catch (e) {
+                  console.error("Save feedback error:", e);
+                }
+              }
+            }}
+            className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 transition-colors text-white text-[9.5px] font-mono font-bold uppercase tracking-wider px-4 py-1.5 rounded flex items-center gap-1 shrink-0"
+          >
+            {isSavingFeedback ? (
+              <RefreshCw className="w-3 h-3 animate-spin" />
+            ) : (
+              <Check className="w-3.5 h-3.5" />
+            )}
+            {isSavingFeedback ? "Saving..." : "Submit Empirical Outcome"}
+          </button>
+        </div>
+      </div>
 
       {/* Peer Review Critique Feedback */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
