@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 import { 
   ScientificPaper, 
   GraphNode, 
@@ -9,10 +8,6 @@ import {
   Bounty, 
   InterdisciplinaryExchangeLog 
 } from "../types.js";
-
-// Ensure dirname support in ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Path to persistent storage
 const DB_FILE_PATH = path.join(process.cwd(), "data", "db.json");
@@ -229,6 +224,37 @@ const SEED_HYPOTHESES: Hypothesis[] = [
       time: 2.4,
       influence: 0.91
     },
+    grantFitScore: 94,
+    grantSuccessProbability: 82,
+    primaryGrantMatch: {
+      id: "grant-nsf-02",
+      agency: "NSF Awards",
+      title: "Quantum-Enhanced Biomolecular Modeling and Folding Landscapes",
+      code: "NSF-QBIO-2026",
+      fundingAmount: "$1,800,000",
+      deadline: "2026-11-01",
+      domain: "Quantum & Biophysics",
+      region: "US",
+      description: "Focuses on applying quantum error correction stabilizers, tensor networks, and GNN link prediction to structural biophysics.",
+      eligibility: "US Academic Labs, National Labs",
+      url: "https://www.nsf.gov/funding/pgm_summ.jsp?pims_id=505882"
+    },
+    proposalOutline: {
+      projectTitle: "Grant Proposal: Topological Stabilizer Mapping for Protein Folding Landscapes",
+      executiveSummary: "This project targets a fundamental cross-disciplinary gap between quantum error correction decoders and biomolecular folding landscapes. Leverages Minimum-Weight Perfect Matching to bypass exponential tensor contraction limits.",
+      interdisciplinaryInnovation: "Bridges quantum error syndrome topology and structural biophysics.",
+      targetGrantAgency: "NSF Awards",
+      targetGrantCode: "NSF-QBIO-2026",
+      estimatedBudget: "$1,800,000",
+      projectDuration: "36 Months",
+      keyMilestones: [
+        "Month 0-6: Knowledge Graph alignment & in-silico simulation",
+        "Month 7-18: In-vitro experimental validation & target binding assay",
+        "Month 19-30: Interdisciplinary lab collaboration & preclinical testing",
+        "Month 31-36: Final grant reporting, open data publishing & IP filing"
+      ],
+      expectedImpact: "Directly accelerates target validation timeline by 40% and provides high grant alignment with NSF funding priorities."
+    },
     contradictions: [
       {
         id: "contra-1",
@@ -283,6 +309,21 @@ const SEED_HYPOTHESES: Hypothesis[] = [
       cost: 0.40,
       time: 1.2,
       influence: 0.75
+    },
+    grantFitScore: 91,
+    grantSuccessProbability: 79,
+    primaryGrantMatch: {
+      id: "grant-nih-01",
+      agency: "NIH RePORTER",
+      title: "R01: Cross-Domain Computational Approaches to Neurodegenerative Disease",
+      code: "PAR-26-089",
+      fundingAmount: "$2,500,000",
+      deadline: "2026-10-15",
+      domain: "Oncology & Neuroscience",
+      region: "US",
+      description: "Supports interdisciplinary projects translating mathematical physics or quantum modeling into actionable therapeutic interventions for Alzheimer's and ALS.",
+      eligibility: "Higher Education Institutions, Non-profit Research Labs",
+      url: "https://grants.nih.gov/grants/guide/pa-files/PAR-26-089.html"
     },
     createdAt: new Date().toISOString()
   }

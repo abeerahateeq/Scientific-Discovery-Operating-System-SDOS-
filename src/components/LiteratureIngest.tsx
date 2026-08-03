@@ -43,6 +43,40 @@ export default function LiteratureIngest({
   const [year, setYear] = useState(new Date().getFullYear().toString());
   const [abstract, setAbstract] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
+
+  // Load auto-saved draft on mount
+  React.useEffect(() => {
+    const saved = localStorage.getItem("sdos_lit_ingest_autosave");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.title || parsed.abstract) {
+          setTitle(parsed.title || "");
+          setAuthors(parsed.authors || "");
+          setJournal(parsed.journal || "");
+          setYear(parsed.year || new Date().getFullYear().toString());
+          setAbstract(parsed.abstract || "");
+          setHasRestoredDraft(true);
+        }
+      } catch (e) {
+        console.error("Failed to restore literature ingest auto-save draft", e);
+      }
+    }
+  }, []);
+
+  // Save changes to localStorage
+  React.useEffect(() => {
+    if (title || authors || journal || abstract) {
+      localStorage.setItem("sdos_lit_ingest_autosave", JSON.stringify({
+        title,
+        authors,
+        journal,
+        year,
+        abstract
+      }));
+    }
+  }, [title, authors, journal, year, abstract]);
 
   // PDF Upload State
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -80,12 +114,14 @@ export default function LiteratureIngest({
         abstract
       });
 
-      // Reset form
+      // Clear form & auto-save draft
       setTitle("");
       setAuthors("");
       setJournal("");
       setYear(new Date().getFullYear().toString());
       setAbstract("");
+      setHasRestoredDraft(false);
+      localStorage.removeItem("sdos_lit_ingest_autosave");
 
       setSuccessMsg("Document ingested successfully! Running AI Knowledge Extraction...");
       setTimeout(() => setSuccessMsg(""), 5000);

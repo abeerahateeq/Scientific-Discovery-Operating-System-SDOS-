@@ -42,17 +42,17 @@ export default function HypothesisCompare({
   const commonNodes = React.useMemo(() => {
     if (!hypoA || !hypoB) return [];
     const nodesA = new Set<string>();
-    hypoA.indirectLinks.forEach(link => {
-      nodesA.add(link.source.toLowerCase());
-      nodesA.add(link.target.toLowerCase());
+    (hypoA.indirectLinks || []).forEach(link => {
+      if (link?.source) nodesA.add(link.source.toLowerCase());
+      if (link?.target) nodesA.add(link.target.toLowerCase());
     });
 
     const crossovers = new Set<string>();
-    hypoB.indirectLinks.forEach(link => {
-      const s = link.source.toLowerCase();
-      const t = link.target.toLowerCase();
-      if (nodesA.has(s)) crossovers.add(link.source);
-      if (nodesA.has(t)) crossovers.add(link.target);
+    (hypoB.indirectLinks || []).forEach(link => {
+      const s = link?.source?.toLowerCase() || "";
+      const t = link?.target?.toLowerCase() || "";
+      if (s && nodesA.has(s)) crossovers.add(link.source);
+      if (t && nodesA.has(t)) crossovers.add(link.target);
     });
 
     return Array.from(crossovers);

@@ -1,7 +1,12 @@
 import { Router } from "express";
 import multer from "multer";
+import { createRequire } from "module";
+
+const customRequire = createRequire(process.cwd() + "/package.json");
 // @ts-ignore
-import pdf from "pdf-parse";
+const pdfRaw = customRequire("pdf-parse");
+const pdf = typeof pdfRaw === "function" ? pdfRaw : pdfRaw?.default || pdfRaw;
+
 import { db } from "../../lib/db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { parsePDFHeuristics } from "../helpers.js";

@@ -16,6 +16,47 @@ body {
   font-size: 11px;
 }
 
+/* High Contrast Theme Accessibility Mode */
+html.high-contrast,
+html.high-contrast body,
+html.high-contrast #aether-os-root {
+  background-color: #000000 !important;
+  color: #F8FAFC !important;
+}
+
+html.high-contrast #os-masthead {
+  background-color: #050505 !important;
+  border-bottom-color: #475569 !important;
+}
+
+html.high-contrast .border-slate-800,
+html.high-contrast .border-slate-800\/80,
+html.high-contrast .border-slate-750 {
+  border-color: #475569 !important;
+}
+
+html.high-contrast .text-slate-400,
+html.high-contrast .text-slate-500 {
+  color: #E2E8F0 !important;
+}
+
+html.high-contrast .text-slate-300,
+html.high-contrast .text-slate-200 {
+  color: #FFFFFF !important;
+}
+
+html.high-contrast .bg-\[\#0A0B0D\],
+html.high-contrast .bg-\[\#07080A\],
+html.high-contrast .bg-\[\#0F1115\],
+html.high-contrast .bg-\[\#16181D\] {
+  background-color: #000000 !important;
+}
+
+html.high-contrast .bg-slate-900,
+html.high-contrast .bg-slate-950 {
+  background-color: #090B10 !important;
+}
+
 /* Custom compact scrollbars matching high density dashboard design */
 ::-webkit-scrollbar {
   width: 4px;

@@ -83,8 +83,8 @@ export default function DiscoveryMarket({
     const hypo = hypotheses.find(h => h.id === recommenderHypoId);
     if (!hypo) return [];
 
-    const titleText = hypo.title.toLowerCase();
-    const descText = hypo.description.toLowerCase();
+    const titleText = (hypo?.title || "").toLowerCase();
+    const descText = (hypo?.description || "").toLowerCase();
 
     return EXPERT_LABS.map(lab => {
       // Calculate matching tags

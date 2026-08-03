@@ -49,6 +49,12 @@ export default function KnowledgeGraph({
   const [searchQuery, setSearchQuery] = useState("");
   const [layoutName, setLayoutName] = useState<string>("cose");
   const [selectedEdge, setSelectedEdge] = useState<GraphLink | null>(null);
+  const [hoveredNodeInfo, setHoveredNodeInfo] = useState<{
+    label: string;
+    group: string;
+    degree: number;
+    avgConfidence: number;
+  } | null>(null);
 
   // Clear selected edge when selectedNode from prop is updated
   useEffect(() => {
@@ -223,6 +229,29 @@ export default function KnowledgeGraph({
             "width": 2.5,
             "opacity": 1.0
           }
+        },
+        {
+          selector: "node.hover-dimmed, edge.hover-dimmed",
+          style: {
+            "opacity": 0.15
+          }
+        },
+        {
+          selector: "node.hover-highlighted",
+          style: {
+            "border-color": "#10b981",
+            "border-width": 3,
+            "opacity": 1.0
+          }
+        },
+        {
+          selector: "edge.hover-highlighted",
+          style: {
+            "line-color": "#10b981",
+            "target-arrow-color": "#10b981",
+            "width": 3,
+            "opacity": 1.0
+          }
         }
       ] as any[],
       layout: {
@@ -253,6 +282,37 @@ export default function KnowledgeGraph({
         onNodeClick(originalNode);
       }
     });
+
+    // Node Hover Event (Highlight Related Connectivity)
+    cy.on("mouseover", "node", (evt) => {
+      const node = evt.target;
+      const neighborhood = node.neighborhood().add(node);
+      
+      cy.elements().removeClass("hover-highlighted hover-dimmed");
+      cy.elements().difference(neighborhood).addClass("hover-dimmed");
+      neighborhood.addClass("hover-highlighted");
+
+      const connectedEdges = node.connectedEdges();
+      let totalConf = 0;
+      connectedEdges.forEach((e: any) => {
+        totalConf += (e.data("confidence") || 0.85);
+      });
+      const avgConf = connectedEdges.length > 0 ? totalConf / connectedEdges.length : 0.85;
+
+      setHoveredNodeInfo({
+        label: node.data("label"),
+        group: node.data("group"),
+        degree: connectedEdges.length,
+        avgConfidence: Math.round(avgConf * 100)
+      });
+    });
+
+    cy.on("mouseout", "node", () => {
+      cy.elements().removeClass("hover-highlighted hover-dimmed");
+      setHoveredNodeInfo(null);
+    });
+
+    // Edge click event
 
     // Edge click event
     cy.on("tap", "edge", (evt) => {
@@ -514,6 +574,28 @@ export default function KnowledgeGraph({
 
       {/* Interactive Visual Canvas */}
       <div id="graph-canvas-container" className="lg:col-span-3 bg-[#07080A] border border-slate-800 rounded relative overflow-hidden h-[450px] lg:h-full min-h-[380px] flex flex-col">
+        {/* Graph Hover HUD Connectivity Strength Overlay */}
+        {hoveredNodeInfo && (
+          <div className="absolute top-12 left-4 right-4 z-20 bg-[#07080A]/90 border border-emerald-500/40 backdrop-blur rounded p-2.5 shadow-2xl flex items-center justify-between text-[10px] font-mono animate-fade-in">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              <span className="text-slate-400 uppercase">Hover Focus:</span>
+              <span className="text-slate-100 font-bold font-sans">{hoveredNodeInfo.label}</span>
+              <span className="text-[8px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded uppercase">
+                {hoveredNodeInfo.group}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-slate-400">
+                Direct Links: <strong className="text-emerald-400">{hoveredNodeInfo.degree}</strong>
+              </span>
+              <span className="text-slate-400">
+                Avg Connectivity Confidence: <strong className="text-sky-400">{hoveredNodeInfo.avgConfidence}%</strong>
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Graph Legends & Floating Toolbar */}
         <div className="p-2 border-b border-slate-950 bg-[#0F1115]/60 backdrop-blur flex items-center justify-between z-10 flex-wrap gap-2">
           {/* Legend Badges */}

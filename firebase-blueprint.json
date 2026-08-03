@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profiles",
+      "description": "User profile data and notification preferences",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "morningBriefingTime": { "type": "string" },
+        "notificationPreferences": {
+          "type": "object",
+          "properties": {
+            "processDone": { "type": "boolean" },
+            "morningBriefing": { "type": "boolean" },
+            "grantAlerts": { "type": "boolean" }
+          }
+        }
+      },
+      "required": ["uid", "email"]
+    },
+    "userHypotheses": {
+      "title": "User Hypotheses",
+      "description": "Scientific hypotheses saved or created by the user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "query": { "type": "string" },
+        "description": { "type": "string" },
+        "confidence": { "type": "number" },
+        "domain": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "title"]
+    },
+    "userNotifications": {
+      "title": "User Notifications",
+      "description": "Notifications sent to the user for completed AI processes or morning briefings",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "link": { "type": "string" }
+      },
+      "required": ["userId", "title", "message", "read", "createdAt"]
+    },
+    "userBriefings": {
+      "title": "User Morning Briefings",
+      "description": "Daily morning briefings generated for the user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "headline": { "type": "string" },
+        "summary": { "type": "string" },
+        "date": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "headline", "summary", "date"]
+    }
+  },
+  "securityRules": [
+    "match /users/{userId} { allow read, write: if request.auth != null && request.auth.uid == userId; }",
+    "match /userHypotheses/{docId} { allow read, write: if request.auth != null && (request.resource.data.userId == request.auth.uid || resource.data.userId == request.auth.uid); allow delete: if request.auth != null && resource.data.userId == request.auth.uid; }",
+    "match /userNotifications/{docId} { allow read, write: if request.auth != null && (request.resource.data.userId == request.auth.uid || resource.data.userId == request.auth.uid); allow delete: if request.auth != null && resource.data.userId == request.auth.uid; }",
+    "match /userBriefings/{docId} { allow read, write: if request.auth != null && (request.resource.data.userId == request.auth.uid || resource.data.userId == request.auth.uid); }",
+    "match /papers/{docId} { allow read, write: if request.auth != null; }"
+  ]
+}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { AgentStatus, AgentName, Hypothesis, InterdisciplinaryExchangeLog } from "../types";
+import DiscoveryHeatmap from "./DiscoveryHeatmap";
 import { 
   ResponsiveContainer,
   AreaChart,
@@ -31,7 +32,8 @@ import {
   ThumbsDown,
   Shuffle,
   GitBranch,
-  TrendingUp
+  TrendingUp,
+  Download
 } from "lucide-react";
 
 const CustomTooltip = ({ active, payload }: any) => {
@@ -74,6 +76,7 @@ interface AgentPipelineProps {
   onRefreshData?: () => Promise<void>;
   onAutonomousRun?: () => Promise<void>;
   isAutonomousRunning?: boolean;
+  onOpenExport?: () => void;
 }
 
 const INITIAL_AGENTS: { name: AgentName; description: string }[] = [
@@ -102,11 +105,26 @@ export default function AgentPipeline({
   setAgentLogs,
   onRefreshData,
   onAutonomousRun,
-  isAutonomousRunning = false
+  isAutonomousRunning = false,
+  onOpenExport
 }: AgentPipelineProps) {
   const [query, setQuery] = useState("");
   const [activeStep, setActiveStep] = useState<number>(-1);
   const [newlyCreated, setNewlyCreated] = useState<Hypothesis | null>(null);
+
+  // Auto-save query to local storage
+  useEffect(() => {
+    const savedQuery = localStorage.getItem("sdos_hypothesis_query_autosave");
+    if (savedQuery) {
+      setQuery(savedQuery);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (query) {
+      localStorage.setItem("sdos_hypothesis_query_autosave", query);
+    }
+  }, [query]);
 
   // Discovery Mode: Single Synthesis vs Evolutionary Tournament
   const [pipelineMode, setPipelineMode] = useState<"synthesis" | "tournament">("synthesis");
@@ -126,7 +144,7 @@ export default function AgentPipeline({
     try {
       const res = await fetch("/api/interdisciplinary/logs");
       const data = await res.json();
-      setExchangeLogs(data);
+      if (Array.isArray(data)) setExchangeLogs(data);
     } catch (e) {
       console.error("Error fetching exchange logs:", e);
     }
@@ -161,10 +179,11 @@ export default function AgentPipeline({
 
   // Compute System Discovery Track Record from user-labeled data
   const trackRecordStats = React.useMemo(() => {
-    const total = hypotheses.length;
-    const successes = hypotheses.filter(h => h.feedbackStatus === "success").length;
-    const failures = hypotheses.filter(h => h.feedbackStatus === "failure").length;
-    const edits = hypotheses.filter(h => h.feedbackStatus === "modification").length;
+    const list = Array.isArray(hypotheses) ? hypotheses : [];
+    const total = list.length;
+    const successes = list.filter(h => h.feedbackStatus === "success").length;
+    const failures = list.filter(h => h.feedbackStatus === "failure").length;
+    const edits = list.filter(h => h.feedbackStatus === "modification").length;
     const labeledCount = successes + failures + edits;
 
     // Use a high-fidelity baseline if no manual labels have been set yet
@@ -330,24 +349,38 @@ export default function AgentPipeline({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={onAutonomousRun}
-              disabled={isAutonomousRunning || isGenerating || isTournamentRunning}
-              className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 transition-all text-white font-bold px-3 py-1.5 rounded text-[9.5px] uppercase tracking-wider flex items-center gap-1.5"
-            >
-              {isAutonomousRunning ? (
-                <>
-                  <RefreshCw className="w-3 h-3 animate-spin text-white" />
-                  Sweeping 8,462 papers...
-                </>
-              ) : (
-                <>
-                  <Activity className="w-3.5 h-3.5" />
-                  Run Autonomous Sweep
-                </>
+            <div className="flex items-center gap-2">
+              {onOpenExport && (
+                <button
+                  type="button"
+                  onClick={onOpenExport}
+                  className="bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border border-sky-500/40 transition-all font-bold px-3 py-1.5 rounded text-[9.5px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                  title="Export dashboard statistics and hypothesis summaries to PDF or CSV"
+                >
+                  <Download className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Export Report (PDF / CSV)</span>
+                </button>
               )}
-            </button>
+
+              <button
+                type="button"
+                onClick={onAutonomousRun}
+                disabled={isAutonomousRunning || isGenerating || isTournamentRunning}
+                className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 transition-all text-white font-bold px-3 py-1.5 rounded text-[9.5px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+              >
+                {isAutonomousRunning ? (
+                  <>
+                    <RefreshCw className="w-3 h-3 animate-spin text-white" />
+                    Sweeping 8,462 papers...
+                  </>
+                ) : (
+                  <>
+                    <Activity className="w-3.5 h-3.5" />
+                    Run Autonomous Sweep
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
         
@@ -650,7 +683,38 @@ export default function AgentPipeline({
         {/* Dynamic bottom feedback section based on active mode */}
         {pipelineMode === "synthesis" ? (
           <div className="bg-[#0F1115] border border-slate-800 rounded p-4 flex flex-col gap-3">
-            <h3 className="text-slate-200 font-bold uppercase tracking-wider text-[11px] border-b border-slate-800 pb-2">Active Multi-Agent Topology</h3>
+            <h3 className="text-slate-200 font-bold uppercase tracking-wider text-[11px] border-b border-slate-800 pb-2 flex justify-between items-center">
+              <span>Active Multi-Agent Topology</span>
+              {isGenerating && (
+                <span className="text-sky-400 font-mono text-[9px] uppercase tracking-wider animate-pulse">Processing Agent Chain...</span>
+              )}
+            </h3>
+
+            {/* Real-Time Multi-Agent Progress Bar */}
+            <div className="flex flex-col gap-1.5 bg-[#07080A] p-2.5 rounded border border-slate-800">
+              <div className="flex items-center justify-between text-[9px] font-mono">
+                <span className="text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                  <Activity className={`w-3 h-3 ${isGenerating ? 'text-sky-400 animate-spin' : 'text-slate-500'}`} />
+                  Multi-Agent Pipeline Step Progress
+                </span>
+                <span className="text-sky-400 font-bold">
+                  {activeStep < 0 ? "0%" : activeStep >= INITIAL_AGENTS.length ? "100% (Complete)" : `${Math.round(((activeStep + 1) / INITIAL_AGENTS.length) * 100)}%`}
+                </span>
+              </div>
+              <div className="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden border border-slate-800 relative">
+                <div
+                  className="bg-gradient-to-r from-sky-500 via-indigo-500 to-emerald-400 h-full rounded-full transition-all duration-500 shadow-[0_0_12px_rgba(56,189,248,0.4)]"
+                  style={{ width: `${activeStep < 0 ? 0 : Math.min(100, Math.round(((activeStep + 1) / INITIAL_AGENTS.length) * 100))}%` }}
+                />
+              </div>
+              {activeStep >= 0 && activeStep < INITIAL_AGENTS.length && (
+                <div className="flex items-center justify-between text-[8.5px] font-mono text-slate-500 mt-0.5">
+                  <span>Active Agent: <strong className="text-sky-300">{INITIAL_AGENTS[activeStep].name}</strong></span>
+                  <span>Step {activeStep + 1} of {INITIAL_AGENTS.length}</span>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
               {INITIAL_AGENTS.map((agent, idx) => {
                 const isCurrent = activeStep === idx;
@@ -685,6 +749,9 @@ export default function AgentPipeline({
                 );
               })}
             </div>
+
+            {/* Visual Discovery Heatmap & Domain Density Matrix */}
+            <DiscoveryHeatmap hypotheses={hypotheses} onSelectHypothesis={onSelectHypothesis} />
           </div>
         ) : (
           <div className="bg-[#0F1115] border border-slate-800 rounded p-4 flex flex-col gap-3">

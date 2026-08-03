@@ -13,6 +13,9 @@ import graphRouter from "./src/server/routes/graph.js";
 import hypothesesRouter from "./src/server/routes/hypotheses.js";
 import bountiesRouter from "./src/server/routes/bounties.js";
 import interdisciplinaryRouter from "./src/server/routes/interdisciplinary.js";
+import grantsRouter from "./src/server/routes/grants.js";
+import researchOsRouter from "./src/server/routes/research_os.js";
+import guideRouter from "./src/server/routes/guide.js";
 
 const app = express();
 const PORT = 3000;
@@ -21,9 +24,11 @@ const PORT = 3000;
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// Log requests
+// Log API requests
 app.use((req, res, next) => {
-  console.log(`[Express] ${req.method} ${req.url}`);
+  if (req.url.startsWith("/api")) {
+    console.log(`[Express] ${req.method} ${req.url}`);
+  }
   next();
 });
 
@@ -34,6 +39,9 @@ app.use("/api/graph", graphRouter);
 app.use("/api/hypotheses", hypothesesRouter);
 app.use("/api/bounties", bountiesRouter);
 app.use("/api/interdisciplinary", interdisciplinaryRouter);
+app.use("/api/grants", grantsRouter);
+app.use("/api/research-os", researchOsRouter);
+app.use("/api/guide", guideRouter);
 
 // Vite middleware and static asset serving
 async function startServer() {
