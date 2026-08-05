@@ -22,6 +22,7 @@ import ResearchOSWorkspace from "./components/ResearchOSWorkspace";
 import UserHeaderControl from "./components/UserHeaderControl";
 import RobloxGuideBot from "./components/RobloxGuideBot";
 import ExportReportModal from "./components/ExportReportModal";
+import ApiKeyModal from "./components/ApiKeyModal";
 import RecentActivityView, { ActivityItem } from "./components/RecentActivityView";
 import { 
   auth, 
@@ -72,6 +73,7 @@ import {
   FolderTree,
   Grid,
   Trash2,
+  Key,
   ChevronDown,
   ChevronRight,
   AlertTriangle,
@@ -199,6 +201,8 @@ export default function App() {
   const [collapsedDomains, setCollapsedDomains] = useState<Record<string, boolean>>({});
   const [batchSelectedHypothesisIds, setBatchSelectedHypothesisIds] = useState<string[]>([]);
   const [showBatchDeleteModal, setShowBatchDeleteModal] = useState<boolean>(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState<boolean>(false);
+  const [userHasCustomKey, setUserHasCustomKey] = useState<boolean>(() => !!localStorage.getItem('user_gemini_api_key'));
 
   const toggleDomainCollapse = (domain: string) => {
     setCollapsedDomains((prev) => ({ ...prev, [domain]: !prev[domain] }));
@@ -216,17 +220,19 @@ export default function App() {
     }
 
     try {
-      await Promise.all(
-        batchSelectedHypothesisIds.map((id) =>
-          fetch(`/api/hypotheses/${id}`, { method: "DELETE" }).catch(() => {})
-        )
-      );
-    } catch (e) {}
+      await fetch("/api/hypotheses", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: batchSelectedHypothesisIds })
+      });
+    } catch (e) {
+      console.error("Batch delete error:", e);
+    }
 
     logActivity(
       "delete",
       `Batch Deleted ${count} Hypotheses`,
-      `Permanently removed ${count} selected hypotheses from local workspace state and Firestore backend.`
+      `Permanently removed ${count} selected hypotheses from local workspace state and server database.`
     );
     triggerNotification(
       "Batch Deletion Completed",
@@ -235,6 +241,65 @@ export default function App() {
     );
     setBatchSelectedHypothesisIds([]);
     setShowBatchDeleteModal(false);
+  };
+
+  const handleDeleteSingleHypothesis = async (id: string) => {
+    try {
+      const hypoToDelete = hypotheses.find((h) => h.id === id);
+      const title = hypoToDelete?.title || "Hypothesis";
+
+      const res = await fetch(`/api/hypotheses/${id}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        setHypotheses((prev) => prev.filter((h) => h.id !== id));
+        if (selectedHypothesis?.id === id) {
+          const remaining = hypotheses.filter((h) => h.id !== id);
+          setSelectedHypothesis(remaining[0] || null);
+        }
+        logActivity(
+          "delete",
+          "Deleted Hypothesis",
+          `Permanently removed "${title}" from workspace database.`
+        );
+        triggerNotification(
+          "Hypothesis Deleted",
+          `Removed "${title}" from research workspace.`,
+          "system"
+        );
+      }
+    } catch (err) {
+      console.error("Delete hypothesis error:", err);
+    }
+  };
+
+  const handleResetWorkspace = async (mode: "clear" | "seed" = "clear") => {
+    try {
+      const res = await fetch("/api/papers/reset-workspace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode })
+      });
+      if (res.ok) {
+        await fetchData(); // Refresh all state
+        logActivity(
+          "delete",
+          mode === "seed" ? "Restored Sample Dataset" : "Purged Workspace Data",
+          mode === "seed" 
+            ? "Restored default scientific sample dataset." 
+            : "Purged all papers, graph nodes, and hypotheses for a clean research domain."
+        );
+        triggerNotification(
+          mode === "seed" ? "Sample Data Restored" : "Workspace Purged",
+          mode === "seed" 
+            ? "Default dataset restored." 
+            : "Workspace is now 100% clean for your new research domain.",
+          "system"
+        );
+      }
+    } catch (err) {
+      console.error("Reset workspace error:", err);
+    }
   };
 
   // Computed filtered and sorted hypotheses list
@@ -269,11 +334,12 @@ export default function App() {
     clusteredHypotheses[dom].push(h);
   });
 
-  // Compare Mode State
+  // Compare Mode State (Tri-Panel Support for Slot A, B, and C)
   const [isCompareMode, setIsCompareMode] = useState(false);
   const [compareHypoA, setCompareHypoA] = useState<Hypothesis | null>(null);
   const [compareHypoB, setCompareHypoB] = useState<Hypothesis | null>(null);
-  const [compareSlot, setCompareSlot] = useState<"A" | "B">("A");
+  const [compareHypoC, setCompareHypoC] = useState<Hypothesis | null>(null);
+  const [compareSlot, setCompareSlot] = useState<"A" | "B" | "C">("A");
 
   // Loading states
   const [isIngesting, setIsIngesting] = useState(false);
@@ -476,6 +542,57 @@ export default function App() {
       console.error("Ingestion error:", err);
     } finally {
       setIsIngesting(false);
+    }
+  };
+
+  // Delete paper from indexed repository
+  const handleDeletePaper = async (paperId: string) => {
+    try {
+      const paperToDelete = papers.find(p => p.id === paperId);
+      const paperTitle = paperToDelete?.title || "Paper";
+      
+      const res = await fetch(`/api/papers/${paperId}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        setPapers(prev => prev.filter(p => p.id !== paperId));
+        logActivity(
+          "delete",
+          "Removed Literature Paper",
+          `Deleted paper "${paperTitle}" from indexed repository.`
+        );
+        triggerNotification(
+          "Paper Deleted",
+          `Successfully removed "${paperTitle}" from research index.`,
+          "system"
+        );
+      }
+    } catch (err) {
+      console.error("Paper deletion error:", err);
+    }
+  };
+
+  const handleClearAllPapers = async () => {
+    try {
+      const count = papers.length;
+      const res = await fetch("/api/papers", {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        setPapers([]);
+        logActivity(
+          "delete",
+          "Cleared All Literature Papers",
+          `Removed all ${count} papers from indexed research repository.`
+        );
+        triggerNotification(
+          "Repository Cleared",
+          `Cleared all ${count} papers from literature database.`,
+          "system"
+        );
+      }
+    } catch (err) {
+      console.error("Clear papers error:", err);
     }
   };
 
@@ -743,6 +860,21 @@ export default function App() {
             <span className="hidden sm:inline uppercase">Export Report</span>
           </button>
 
+          <button
+            onClick={() => setShowApiKeyModal(true)}
+            className={`px-2.5 py-1 border font-bold rounded flex items-center gap-1.5 transition-all cursor-pointer ${
+              userHasCustomKey
+                ? "bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-400/50 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.2)]"
+                : "bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-300"
+            }`}
+            title="Configure Gemini API Key & Quota Settings (Bring Your Own Key vs Developer Key)"
+          >
+            <Key className={`w-3 h-3 ${userHasCustomKey ? 'text-emerald-400' : 'text-slate-400'}`} />
+            <span className="hidden sm:inline uppercase">
+              {userHasCustomKey ? "API Key: User Quota" : "API Key Settings"}
+            </span>
+          </button>
+
           <div className="hidden md:flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
             <span className="text-emerald-500 uppercase">GRANT FIT: 92.4%</span>
@@ -912,6 +1044,43 @@ export default function App() {
             </button>
           </div>
 
+          {/* Workspace Domain Reset Panel */}
+          <div className="bg-[#0F1115] border border-slate-800 rounded p-2.5 flex flex-col gap-2 text-[10px]">
+            <div className="flex items-center justify-between text-slate-300 font-sans font-semibold uppercase tracking-wider text-[9px]">
+              <div className="flex items-center gap-1.5">
+                <Database className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span>Domain Canvas</span>
+              </div>
+              <span className="text-[8px] font-mono text-emerald-400/80 bg-emerald-500/10 px-1 rounded">MULTI-FIELD</span>
+            </div>
+            <p className="text-[9.5px] text-slate-400 leading-snug">
+              Working on AI, Physics, or non-biotech research? Reset sample data for a clean slate.
+            </p>
+            <div className="flex items-center gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Purge all papers, graph nodes, and sample hypotheses for a 100% clean research canvas?")) {
+                    handleResetWorkspace("clear");
+                  }
+                }}
+                className="flex-1 py-1 px-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded font-mono text-[8.5px] uppercase tracking-wider font-bold transition-all cursor-pointer flex items-center justify-center gap-1"
+                title="Purge all sample literature and hypotheses"
+              >
+                <Trash2 className="w-2.5 h-2.5 text-rose-400" />
+                <span>Clean Slate</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleResetWorkspace("seed")}
+                className="py-1 px-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded font-mono text-[8.5px] uppercase tracking-wider transition-all cursor-pointer"
+                title="Restore default biotechnology sample dataset"
+              >
+                <span>Sample Data</span>
+              </button>
+            </div>
+          </div>
+
           {/* Quick-Help / OS System Console */}
           <div className="bg-[#0F1115] border border-slate-800 rounded p-2.5 flex flex-col gap-2 text-[10px] text-slate-500">
             <div className="flex items-center gap-1.5 text-slate-300 font-sans font-semibold uppercase tracking-wider">
@@ -965,29 +1134,65 @@ export default function App() {
                   activePath={discoveredPath}
                   onDiscover={handleDiscoverRelationships}
                   isDiscovering={isDiscovering}
+                  relationshipSummaryText={discoveryExplanation}
+                  discoveredConnections={discoveredConnections}
                 />
 
                 {/* Collapsible Slide-up explanation Drawer for discovered paths */}
                 {showDiscoveryExplanationCard && (
-                  <div id="discovery-explanation-drawer" className="absolute bottom-3 left-3 right-3 bg-[#0F1115]/95 backdrop-blur border border-sky-500/30 rounded p-4 shadow-2xl flex flex-col gap-3 z-20 animate-slide-up text-[11px]">
-                    <div className="flex items-start justify-between border-b border-slate-800 pb-2">
+                  <div id="discovery-explanation-drawer" className="absolute bottom-3 left-3 right-3 bg-[#0F1115]/95 backdrop-blur border border-sky-500/30 rounded-lg p-4 shadow-2xl flex flex-col gap-3 z-20 animate-slide-up text-[11px]">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                       <div className="flex items-center gap-2">
                         <TrendingUp className="text-sky-400 w-4.5 h-4.5 animate-pulse" />
                         <div>
                           <h3 className="text-slate-200 font-bold text-xs uppercase tracking-wide">
-                            Discovered Indirect Path Synthesis
+                            Discovered Indirect Path Synthesis & Executive Summary
                           </h3>
                           <p className="text-[9px] font-mono text-slate-500">
                             COMPUTED CHAIN VIA GRAPH NEURAL SYMMETRY
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => setShowDiscoveryExplanationCard(false)}
-                        className="bg-[#0A0B0D] border border-slate-800 text-slate-400 hover:text-slate-200 p-1 rounded transition-all"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            const fullReport = `# Discovered Indirect Path Synthesis & Executive Summary\n\n**Generated:** ${new Date().toLocaleString()}\n**Path:** ${discoveredPath.join(" -> ")}\n\n## Discovered Chain Connections:\n${discoveredConnections.map(c => `- ${c.source} --[${c.relationship}]--> ${c.target} (Confidence: ${Math.round(c.confidence*100)}%)`).join("\n")}\n\n## Executive Summary & Detailed Analysis:\n${discoveryExplanation}\n`;
+                            const blob = new Blob([fullReport], { type: "text/markdown" });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = `Relationship_Summary_${Date.now()}.md`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }}
+                          className="bg-sky-500/10 border border-sky-500/30 text-sky-300 hover:bg-sky-500/20 px-2.5 py-1 rounded text-[10px] font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          title="Download complete executive summary and node path as Markdown"
+                        >
+                          <Download className="w-3 h-3" />
+                          <span>Download Summary (.md)</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            const fullReport = `# Discovered Indirect Path Synthesis & Executive Summary\n\nPath: ${discoveredPath.join(" -> ")}\n\n${discoveryExplanation}\n`;
+                            navigator.clipboard.writeText(fullReport);
+                            alert("Executive Relationship Summary copied to clipboard!");
+                          }}
+                          className="bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 px-2 py-1 rounded text-[10px] font-mono flex items-center gap-1 transition-all cursor-pointer"
+                          title="Copy executive summary"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>Copy</span>
+                        </button>
+
+                        <button
+                          onClick={() => setShowDiscoveryExplanationCard(false)}
+                          className="bg-[#0A0B0D] border border-slate-800 text-slate-400 hover:text-slate-200 p-1 rounded transition-all cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     {/* Discovered Path Nodes flow visualization */}
@@ -1039,6 +1244,8 @@ export default function App() {
                 onIngest={handleIngestPaper}
                 isIngesting={isIngesting}
                 onUploadSuccess={fetchData}
+                onDeletePaper={handleDeletePaper}
+                onClearAllPapers={handleClearAllPapers}
               />
             )}
 
@@ -1133,10 +1340,13 @@ export default function App() {
                       <button
                         id="hypotheses-compare-toggle"
                         onClick={() => {
-                          setIsCompareMode(!isCompareMode);
-                          if (!isCompareMode && hypotheses.length >= 2) {
-                            setCompareHypoA(hypotheses[0]);
-                            setCompareHypoB(hypotheses[1]);
+                          const next = !isCompareMode;
+                          setIsCompareMode(next);
+                          if (next && hypotheses.length >= 2) {
+                            setCompareHypoA(hypotheses[0] || null);
+                            setCompareHypoB(hypotheses[1] || null);
+                            setCompareHypoC(hypotheses[2] || null);
+                            setCompareSlot("A");
                           }
                         }}
                         className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border transition-all uppercase tracking-wide flex items-center gap-1 cursor-pointer ${
@@ -1144,10 +1354,10 @@ export default function App() {
                             ? "bg-violet-500/20 text-violet-400 border-violet-500/30"
                             : "bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-300"
                         }`}
-                        title="Toggle side-by-side comparison workspace"
+                        title="Toggle tri-panel side-by-side comparison workspace"
                       >
                         <GitCompare className="w-3 h-3" />
-                        {isCompareMode ? "Comparing ON" : "Compare"}
+                        {isCompareMode ? "Tri-Compare ON" : "Compare"}
                       </button>
                     </div>
                   </div>
@@ -1362,6 +1572,7 @@ export default function App() {
                         const isSelected = !isCompareMode && selectedHypothesis?.id === hypo.id;
                         const isCompareA = isCompareMode && compareHypoA?.id === hypo.id;
                         const isCompareB = isCompareMode && compareHypoB?.id === hypo.id;
+                        const isCompareC = isCompareMode && compareHypoC?.id === hypo.id;
                         const isBatchChecked = batchSelectedHypothesisIds.includes(hypo.id);
 
                         const handleSelect = () => {
@@ -1369,9 +1580,12 @@ export default function App() {
                             if (compareSlot === "A") {
                               setCompareHypoA(hypo);
                               setCompareSlot("B"); // Auto-advance to B
-                            } else {
+                            } else if (compareSlot === "B") {
                               setCompareHypoB(hypo);
-                              setCompareSlot("A"); // Toggle back to A
+                              setCompareSlot("C"); // Auto-advance to C
+                            } else {
+                              setCompareHypoC(hypo);
+                              setCompareSlot("A"); // Wrap back to A
                             }
                           } else {
                             setSelectedHypothesis(hypo);
@@ -1388,7 +1602,9 @@ export default function App() {
                                   ? "bg-sky-500/5 border-sky-500/50"
                                   : isCompareB
                                     ? "bg-violet-500/5 border-violet-500/50"
-                                    : "bg-[#07080A] hover:bg-[#16181D] border-slate-800"
+                                    : isCompareC
+                                      ? "bg-emerald-500/5 border-emerald-500/50"
+                                      : "bg-[#07080A] hover:bg-[#16181D] border-slate-800"
                             }`}
                           >
                             {/* Checkbox for batch multi-select */}
@@ -1418,7 +1634,7 @@ export default function App() {
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <h4 className={`text-[11px] font-bold font-sans leading-snug line-clamp-2 ${
-                                  isSelected ? "text-sky-400" : isCompareA ? "text-sky-400" : isCompareB ? "text-violet-400" : "text-slate-200"
+                                  isSelected ? "text-sky-400" : isCompareA ? "text-sky-400" : isCompareB ? "text-violet-400" : isCompareC ? "text-emerald-400" : "text-slate-200"
                                 }`}>
                                   {hypo.title}
                                 </h4>
@@ -1434,7 +1650,12 @@ export default function App() {
                                       SLOT B
                                     </span>
                                   )}
-                                  {!isCompareA && !isCompareB && (
+                                  {isCompareC && (
+                                    <span className="text-[7.5px] font-mono font-bold text-emerald-400 bg-emerald-500/20 px-1 py-0.2 rounded uppercase tracking-wider">
+                                      SLOT C
+                                    </span>
+                                  )}
+                                  {!isCompareA && !isCompareB && !isCompareC && (
                                     hypo.status === "verified" ? (
                                       <span className="text-[8px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-1 rounded uppercase tracking-wider shrink-0">
                                         Verified
@@ -1469,11 +1690,13 @@ export default function App() {
                     <HypothesisCompare
                       hypoA={compareHypoA}
                       hypoB={compareHypoB}
+                      hypoC={compareHypoC}
                       activeSlot={compareSlot}
                       setActiveSlot={setCompareSlot}
                       onClearSlot={(slot) => {
                         if (slot === "A") setCompareHypoA(null);
-                        else setCompareHypoB(null);
+                        else if (slot === "B") setCompareHypoB(null);
+                        else setCompareHypoC(null);
                       }}
                       onCloseCompare={() => setIsCompareMode(false)}
                     />
@@ -1490,6 +1713,7 @@ export default function App() {
                       isSavingFeedback={isSavingFeedback}
                       isBookmarked={selectedHypothesis ? userFavorites.includes(selectedHypothesis.id) : false}
                       onToggleBookmark={handleToggleBookmark}
+                      onDeleteHypothesis={handleDeleteSingleHypothesis}
                     />
                   )}
                 </div>
@@ -1713,7 +1937,7 @@ export default function App() {
                 grantSuccessProbability: 82,
                 status: "draft",
                 createdAt: new Date().toISOString(),
-                supportingEvidence: ["paper-001", "paper-002"],
+                supportingEvidence: [],
                 analogousMethods: ["Quantum error correction", "Spin-glass dynamics"],
                 indirectLinks: [
                   { source: "Quantum Error Correction", target: "Amyloid Protein Folding", relation: "MODELS_DYNAMICS" }
@@ -1795,6 +2019,13 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* API Key BYOK Settings Modal */}
+      <ApiKeyModal
+        isOpen={showApiKeyModal}
+        onClose={() => setShowApiKeyModal(false)}
+        onKeyUpdated={() => setUserHasCustomKey(!!localStorage.getItem('user_gemini_api_key'))}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { GoogleGenAI } from "@google/genai";
+import { getAiClient } from "../helpers.js";
 
 const router = Router();
 
@@ -15,21 +15,6 @@ interface SupportTicket {
 }
 
 const teamTickets: SupportTicket[] = [];
-
-function getAiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
-    return new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
-  }
-  return null;
-}
 
 const SYSTEM_KNOWLEDGE = `
 You are "BloxBot", a fun, blocky, gamified Roblox-style AI mascot and interactive guide for "Synapse OS" (Scientific Discovery Operating System).
@@ -77,7 +62,7 @@ router.post("/ask", async (req, res) => {
     return res.status(400).json({ error: "Question string is required." });
   }
 
-  const ai = getAiClient();
+  const ai = getAiClient(req);
 
   if (ai) {
     try {

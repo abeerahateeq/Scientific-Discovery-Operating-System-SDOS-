@@ -9,33 +9,56 @@ const pdf = typeof pdfRaw === "function" ? pdfRaw : pdfRaw?.default || pdfRaw;
 
 import { db } from "../../lib/db.js";
 import { requireAuth } from "../middleware/auth.js";
-import { parsePDFHeuristics } from "../helpers.js";
+import { parsePDFHeuristics, getAiClient } from "../helpers.js";
 import { pdfMetadataSchema } from "../../lib/schemas.js";
-import { GoogleGenAI } from "@google/genai";
 import { ScientificPaper } from "../../types.js";
 
 const router = Router();
 const upload = multer({ limits: { fileSize: 15 * 1024 * 1024 } }); // 15MB limit
 
-// Initialize Gemini API helper
-function getAiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
-    return new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
-  }
-  return null;
-}
-
 // 1. Get all papers
 router.get("/", requireAuth, (req, res) => {
   res.json(db.papers);
+});
+
+// Delete a specific paper by ID
+router.delete("/:id", requireAuth, (req, res) => {
+  const { id } = req.params;
+  const initialCount = db.papers.length;
+  db.deletePaper(id);
+  if (db.papers.length === initialCount) {
+    return res.status(404).json({ error: "Paper not found." });
+  }
+  console.log(`[Papers] Deleted paper ID: ${id} and cleaned up graph/evidence linkages.`);
+  res.json({ success: true, deletedId: id });
+});
+
+// Clear all papers or batch delete papers by ID array
+router.delete("/", requireAuth, (req, res) => {
+  const { ids } = req.body || {};
+  if (Array.isArray(ids)) {
+    ids.forEach((id) => db.deletePaper(id));
+    console.log(`[Papers] Batch deleted ${ids.length} papers`);
+    return res.json({ success: true, count: ids.length });
+  }
+  const count = db.papers.length;
+  db.clearAllPapers();
+  console.log(`[Papers] Cleared all ${count} papers and reset graph/hypotheses index`);
+  res.json({ success: true, count });
+});
+
+// Reset or Seed Workspace for different research domains
+router.post("/reset-workspace", requireAuth, (req, res) => {
+  const { mode } = req.body || {};
+  if (mode === "seed") {
+    db.restoreSeedData();
+    console.log("[Workspace] Restored default sample dataset.");
+    return res.json({ success: true, message: "Workspace restored to default sample dataset." });
+  } else {
+    db.clearAllPapers();
+    console.log("[Workspace] Completely purged papers, graph, and hypotheses for a clean slate.");
+    return res.json({ success: true, message: "Workspace purged for new research domain." });
+  }
 });
 
 // 2. Ingest new paper via text
@@ -58,13 +81,12 @@ router.post("/ingest", requireAuth, async (req, res) => {
     entitiesExtracted: []
   };
 
-  const papersList = [...db.papers];
-  papersList.push(newPaper);
+  const papersList = [newPaper, ...db.papers];
   db.papers = papersList;
 
   console.log(`Ingesting paper: "${title}"...`);
 
-  const ai = getAiClient();
+  const ai = getAiClient(req);
   if (ai) {
     try {
       const prompt = `You are a Knowledge Extraction Agent in a Scientific Discovery OS.
@@ -215,21 +237,22 @@ router.post("/upload-pdf", requireAuth, upload.single("pdf"), async (req, res) =
   };
 
   try {
-    logStep("Receiving PDF upload stream...");
+    logStep("Resetting initial file ingestion buffer for new document processing...");
     if (!req.file) {
       logStep("Error: No PDF file provided in the request.");
       return res.status(400).json({ error: "No PDF file uploaded." });
     }
 
-    logStep(`Successfully received file: "${req.file.originalname}" (${(req.file.size / 1024 / 1024).toFixed(2)} MB)`);
-    logStep("Step 1: Initializing PyMuPDF (fitz) text and layout extraction engine...");
+    logStep(`Successfully received isolated file buffer: "${req.file.originalname}" (${(req.file.size / 1024 / 1024).toFixed(2)} MB)`);
+    logStep("Step 1: Initializing PyMuPDF (fitz) text and layout extraction engine with fresh buffer state...");
     
+    // Explicitly initialize fresh document buffer variables
     let pdfText = "";
     try {
       // @ts-ignore
       const parsedData = await pdf(req.file.buffer);
       pdfText = parsedData.text || "";
-      logStep(`PyMuPDF parsed successfully. Extracted ${parsedData.numpages} pages and ${pdfText.length} characters.`);
+      logStep(`PyMuPDF parsed successfully. Extracted ${parsedData.numpages} pages and ${pdfText.length} characters from fresh buffer.`);
     } catch (parseErr: any) {
       logStep(`PyMuPDF layout extraction warning: ${parseErr.message || parseErr}. Trying fallback character mapper...`);
       pdfText = req.file.buffer.toString("utf-8").replace(/[^\x20-\x7E\n]/g, "");
@@ -255,7 +278,7 @@ router.post("/upload-pdf", requireAuth, upload.single("pdf"), async (req, res) =
     let extractedEntities: any[] = [];
     let extractedLinks: any[] = [];
 
-    const ai = getAiClient();
+    const ai = getAiClient(req);
     if (ai) {
       logStep("Step 4: Executing Gemini Cognitive Extraction (LLM-grounded GROBID metadata synthesis)...");
       try {
@@ -382,8 +405,7 @@ Return ONLY a valid JSON object matching this schema (do not wrap in markdown \`
       references: extractedReferences
     };
 
-    const papersList = [...db.papers];
-    papersList.push(newPaper);
+    const papersList = [newPaper, ...db.papers];
 
     // Save database state
     db.nodes = currentNodes;

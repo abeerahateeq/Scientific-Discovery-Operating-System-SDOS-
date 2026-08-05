@@ -10,6 +10,7 @@ export interface ScientificPaper {
   status: 'ingested' | 'processing' | 'analyzed';
   entitiesExtracted: string[];
   references?: { title: string; authors: string; journal: string; year?: number }[];
+  sourceType?: 'user_uploaded' | 'system_discovered';
 }
 
 export type NodeGroup = 
@@ -137,10 +138,29 @@ export interface Hypothesis {
     citationOverlap: number;      // e.g. 0 to 10
     historicalSuccessRate: number; // 0 to 100
   };
+  provenance?: ProvenanceItem[];
+  autoDiscoveryEnabled?: boolean;
   feedbackStatus?: 'success' | 'failure' | 'modification';
   feedbackNotes?: string;
   feedbackTimestamp?: string;
   domain?: 'Medicine' | 'Materials' | 'Quantum' | 'Genomics' | 'Astrophysics';
+}
+
+export interface ProvenanceItem {
+  section: 'hypothesis' | 'implications' | 'protocol';
+  paperId?: string;
+  paperTitle: string;
+  source: 'uploaded' | 'discovered' | 'foundation_knowledge';
+  contribution: string;
+}
+
+export interface ResearchNote {
+  id: string;
+  title: string;
+  content: string;
+  category: 'graph_insight' | 'hypothesis_note' | 'protocol_note' | 'literature_note';
+  tags: string[];
+  createdAt: string;
 }
 
 export interface MorningBriefingData {

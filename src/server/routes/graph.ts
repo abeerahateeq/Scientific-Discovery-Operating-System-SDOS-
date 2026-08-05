@@ -1,26 +1,9 @@
 import { Router } from "express";
 import { db } from "../../lib/db.js";
 import { requireAuth } from "../middleware/auth.js";
-import { findShortestPath } from "../helpers.js";
-import { GoogleGenAI } from "@google/genai";
+import { findShortestPath, getAiClient } from "../helpers.js";
 
 const router = Router();
-
-// Initialize Gemini API helper
-function getAiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
-    return new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
-  }
-  return null;
-}
 
 // 1. Get entire Knowledge Graph
 router.get("/", requireAuth, (req, res) => {
@@ -145,7 +128,7 @@ router.post("/discover", requireAuth, async (req, res) => {
   }
 
   let explanation = "";
-  const ai = getAiClient();
+  const ai = getAiClient(req);
   if (ai) {
     try {
       const pathDescriptionStr = pathNodes.map((n, idx) => {

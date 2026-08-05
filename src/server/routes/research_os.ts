@@ -15,11 +15,11 @@ const router = Router();
 export let SEED_CUSTOM_AGENTS: CustomResearchAgent[] = [
   {
     id: "agent-01",
-    name: "Oncology & Biomarker Agent",
-    domain: "Cancer Oncology",
-    description: "Monitors PubMed & bioRxiv for small molecule docking targets and cell signaling inhibition in neuroblastoma.",
-    systemPrompt: "You are an expert Oncology AI Agent. Analyze citation networks to highlight targeted therapies and biomarker downregulation.",
-    assignedTools: ["Literature Search", "KG Link Prediction", "PDB Structural Docking"],
+    name: "Physical Sciences & Materials Scout",
+    domain: "Quantum & Materials Science",
+    description: "Monitors arXiv & Physical Review Letters for topological band structures, room-temperature superconductors, and energy storage scaffolds.",
+    systemPrompt: "You are an expert Physics & Materials AI Agent. Analyze citation networks to highlight novel synthesis pathways and structural properties.",
+    assignedTools: ["Literature Search", "KG Link Prediction", "Crystal Lattice Simulation"],
     workflowTrigger: "On Paper Ingestion",
     author: "Dr. Elena Rostova",
     status: "active",
@@ -29,9 +29,9 @@ export let SEED_CUSTOM_AGENTS: CustomResearchAgent[] = [
     id: "agent-02",
     name: "Quantum Biophysics & Coherence Agent",
     domain: "Quantum & Structural Biology",
-    description: "Evaluates mathematical physics analogies for protein folding and quantum error correction code mapping.",
-    systemPrompt: "Map stabilizer codes to protein energy landscapes. Identify topological invariants in molecular structures.",
-    assignedTools: ["Knowledge Graph GNN", "Tensor Network Simulator", "NIH Grant Matcher"],
+    description: "Evaluates mathematical physics analogies for macromolecular dynamics and quantum error correction code mapping.",
+    systemPrompt: "Map stabilizer codes to high-dimensional state spaces. Identify topological invariants in complex physical and biological networks.",
+    assignedTools: ["Knowledge Graph GNN", "Tensor Network Simulator", "Grant Matcher"],
     workflowTrigger: "On Gap Detected",
     author: "Prof. Marcus Vance",
     status: "active",
@@ -54,21 +54,21 @@ export let SEED_CUSTOM_AGENTS: CustomResearchAgent[] = [
 // 1. Generate Literature Review
 router.post("/literature-review", requireAuth, (req, res) => {
   const { topic, domain, paperIds } = req.body;
-  const targetTopic = topic || "Cross-Disciplinary Quantum-Enhanced Biomolecular Modeling";
+  const targetTopic = topic || "Cross-Disciplinary Quantum-Enhanced Physical Modeling";
 
   const litReview: LiteratureReview = {
     id: `litrev-${Date.now()}`,
     title: `Automated Systematic Review: ${targetTopic}`,
-    domain: domain || "Quantum Biophysics",
+    domain: domain || "Interdisciplinary Physics & Materials",
     themes: [
       {
-        themeName: "Topological Error Correction in Macromolecules",
-        summary: "Recent literature shifts toward mapping surface code stabilizers to protein conformational search spaces, reducing state space dimensionality.",
+        themeName: "Topological Invariants and Error-Correcting Landscapes",
+        summary: "Recent literature shifts toward mapping stabilizer codes and topological invariants to high-dimensional state search spaces.",
         supportingPapers: ["Zhuang et al. (2025)", "Rao et al. (2026)"]
       },
       {
-        themeName: "In-Silico Docking and Small-Molecule Downregulation",
-        summary: "High-throughput docking models demonstrate that targeting Gene X conformation traps protein aggregates before neurotoxicity manifests.",
+        themeName: "Algorithmic Speedups via Graph Neural Networks",
+        summary: "High-throughput graph neural networks demonstrate rapid state space reduction, bypassing exponential brute-force computational limits.",
         supportingPapers: ["Vance et al. (2025)", "Zhao et al. (2026)"]
       }
     ],
@@ -76,22 +76,22 @@ router.post("/literature-review", requireAuth, (req, res) => {
       {
         methodA: "GNN Link Prediction (PyTorch Geometric)",
         methodB: "Tensor Network Contraction (MPO / MPS)",
-        prosAndCons: "GNN scales better to large citation graphs; Tensor Networks offer higher numerical accuracy for ground-state energies.",
-        applicability: "Use GNN for hypothesis candidate filtering; use Tensor Networks for exact binding affinity simulation."
+        prosAndCons: "GNN scales better to large citation graphs; Tensor Networks offer higher numerical accuracy for ground-state energy levels.",
+        applicability: "Use GNN for hypothesis candidate filtering; use Tensor Networks for exact state simulation."
       }
     ],
     consensusAndDisagreements: [
       {
-        topic: "Stabilizer Code Decoherence Rates in Biological Temperature Controls",
-        consensusPoints: ["Room-temperature quantum effects in biological systems require thermal bath noise cancellation."],
-        conflictingClaims: ["Claim A (Zhuang et al.): Thermal decoherence invalidates quantum advantage.", "Claim B (Vance et al.): Topological surface protection shields quantum states against 300K thermal bath."]
+        topic: "Thermal Decoherence and Noise Bounds under Ambient Controls",
+        consensusPoints: ["Ambient operational conditions require active thermal noise suppression."],
+        conflictingClaims: ["Claim A (Zhuang et al.): Environmental noise invalidates quantum advantage.", "Claim B (Vance et al.): Topological surface protection shields states against ambient thermal fluctuations."]
       }
     ],
     researchGapsHighlighted: [
-      "Lack of experimental room-temperature validation for quantum stabilizer code mapping.",
-      "Absence of direct in-vitro assays measuring Gene X downregulation under small-molecule Drug Z binding."
+      "Lack of experimental room-temperature validation for topological mapping frameworks.",
+      "Absence of direct empirical benchmark data for cross-domain state transition predictions."
     ],
-    fullMarkdownContent: `# Systematic Literature Review: ${targetTopic}\n\n## Executive Summary\nThis automated systematic review synthesizes 18 peer-reviewed papers across Quantum Information, Structural Biology, and Pharmacology...\n\n### Key Themes\n1. **Topological Invariants in Protein Dynamics**: Mapping quantum decoders to molecular graphs.\n2. **Small-Molecule Conformation Locking**: Targeted therapeutic strategies.\n\n### Consensus & Disagreements\nWhile researchers agree that computational space reduction is necessary, debate remains open regarding thermal decoherence limits at 310K.`,
+    fullMarkdownContent: `# Systematic Literature Review: ${targetTopic}\n\n## Executive Summary\nThis automated systematic review synthesizes peer-reviewed literature across Quantum Information, Physical Sciences, and Advanced Materials...\n\n### Key Themes\n1. **Topological Invariants**: Mapping quantum error decoders to physical system state graphs.\n2. **Algorithmic Acceleration**: Targeted computational strategies for state space traversal.\n\n### Consensus & Disagreements\nWhile researchers agree that computational space reduction is necessary, debate remains open regarding thermal decoherence limits under ambient operational states.`,
     citations: [
       { paperId: "p1", citationText: "Zhuang, Y., et al. (2025). Graph of AI Ideas: Knowledge Graphs and LLMs for AI Research. Nature Machine Intelligence." },
       { paperId: "p2", citationText: "Zhao, H., et al. (2026). AGENTiGraph: Multi-Agent Frameworks for Scientific Discovery. Journal of AI & Science." }
@@ -102,22 +102,34 @@ router.post("/literature-review", requireAuth, (req, res) => {
   res.json(litReview);
 });
 
-// 2. Draft Paper & Grant Proposal
+// 2. Draft Paper & Grant Proposal with Custom Funder & Investor Selection
 router.post("/draft-manuscript", requireAuth, (req, res) => {
-  const { title, hypothesisId, venue } = req.body;
-  const paperTitle = title || "Topological Quantum Decoders for Rapid Macromolecular Folding";
+  const { 
+    title, 
+    hypothesisId, 
+    venue, 
+    investorName, 
+    agencyCode, 
+    targetBudget, 
+    investorFocus 
+  } = req.body;
+
+  const paperTitle = title || "Topological Quantum Decoders for Rapid Physical State Search";
+  const funderAgency = investorName || venue || "NSF Quantum & Physical Sciences Division";
+  const funderCode = agencyCode || "NSF-QPS-2026";
+  const budget = targetBudget || "$2,500,000";
 
   const draft: DraftedManuscript = {
     id: `draft-${Date.now()}`,
     title: paperTitle,
-    targetVenueOrGrant: venue || "Nature Biotechnology / NIH R01 Application",
+    targetVenueOrGrant: `${funderAgency} (${funderCode})`,
     authors: ["Dr. Elena Rostova", "Prof. Marcus Vance", "FA-CDGRF Multi-Agent Co-Author Engine"],
-    abstract: `We present a novel cross-disciplinary framework applying topological quantum error correction decoders (Minimum-Weight Perfect Matching) to protein folding landscapes. By reformulating conformational search as error syndrome decoding, we achieve a 40x speedup in binding affinity prediction compared to classic Molecular Dynamics.`,
-    introduction: `Understanding complex protein folding landscapes remains one of the grand challenges of modern biophysics. Traditional brute-force simulation scales exponentially with amino acid residue counts. Here, we demonstrate that topological quantum error correction algorithms can be mapped directly onto structural biophysics graphs...`,
-    relatedWork: `Prior work by Zhuang et al. (2025) introduced knowledge graph link prediction for hypothesis generation. However, existing methods fail to account for funding availability or downstream experimental protocols. Our approach bridges this gap...`,
-    methodology: `1. Knowledge Graph Construction: Ingested OpenAlex and PubMed metadata into Neo4j.\n2. Minimum-Weight Perfect Matching Decoder: Mapped amino acid side-chain interactions to error syndrome qubits.\n3. In-Silico Docking Verification: Evaluated small-molecule binding energy across 1,000 candidate structures.`,
-    discussion: `Our results demonstrate high fidelity in predicting protein aggregation points. This provides immediate actionable targets for drug discovery, directly aligning with NIH R01 (PAR-26-089) funding priorities.`,
-    grantProposalSection: `GRANT PROPOSAL SPECIFICATIONS:\nTarget Agency: NIH RePORTER (PAR-26-089)\nRequested Budget: $2,500,000 over 36 Months.\nBroader Impact: Accelerates therapeutic pipeline for Alzheimer's and neurodegenerative diseases.`,
+    abstract: `We present a novel cross-disciplinary framework applying topological error correction decoders (Minimum-Weight Perfect Matching) to high-dimensional state search landscapes for "${paperTitle}". By reformulating state exploration as error syndrome decoding, we achieve a 40x speedup in state prediction compared to classic brute-force numerical methods.`,
+    introduction: `Understanding complex state spaces in "${paperTitle}" remains a fundamental challenge in modern scientific discovery. Traditional numerical simulations scale exponentially with problem size. Here, we demonstrate that topological error correction algorithms can be mapped directly onto structural interaction graphs to accelerate validation...`,
+    relatedWork: `Prior work by Zhuang et al. (2025) introduced knowledge graph link prediction for hypothesis generation. However, existing methods fail to account for funding alignment or downstream experimental protocols. Our approach bridges this gap...`,
+    methodology: `1. Knowledge Graph & Literature Ingestion: Ingested OpenAlex and arXiv metadata into Neo4j graph database.\n2. Minimum-Weight Perfect Matching Decoder: Mapped interaction states to topological stabilizer qubits.\n3. In-Silico Benchmarking: Evaluated ground-state energy and predictive accuracy across candidate configurations.`,
+    discussion: `Our results demonstrate high fidelity in predicting critical state transition points for "${paperTitle}". This provides immediate actionable targets, directly aligning with ${funderAgency} (${funderCode}) strategic funding priorities.`,
+    grantProposalSection: `GRANT PROPOSAL SPECIFICATIONS:\nTarget Agency / Funder: ${funderAgency}\nProgram Code: ${funderCode}\nRequested Budget: ${budget} over 36 Months.\nInvestor Strategic Focus: ${investorFocus || "High-risk, high-reward interdisciplinary scientific discovery and experimental translation."}\nBroader Impact: Accelerates foundational research timeline, provides open data access, and validates cross-domain theoretical frameworks.`,
     referencesList: [
       "[1] Zhuang et al. Graph of AI Ideas: Leveraging Knowledge Graphs and LLMs for AI Research Idea Generation (2025).",
       "[2] Zhao et al. AGENTiGraph: A Multi-Agent Knowledge Graph Framework for Interactive LLM Chatbots (2026)."
@@ -131,42 +143,42 @@ router.post("/draft-manuscript", requireAuth, (req, res) => {
 // 3. Design Comprehensive Experiment Plan
 router.post("/design-experiment", requireAuth, (req, res) => {
   const { hypothesisId, hypothesisTitle } = req.body;
-  const targetTitle = hypothesisTitle || "Topological Stabilizer Mapping for Protein Folding";
+  const targetTitle = hypothesisTitle || "Topological Stabilizer Mapping for Physical Systems";
 
   const plan: ExperimentPlan = {
     id: `exp-${Date.now()}`,
     hypothesisId: hypothesisId || "hypo-001",
     hypothesisTitle: targetTitle,
-    suggestedMethodology: "Double-blind in-vitro enzymatic binding assay combined with GPU-accelerated Tensor Network simulation and surface plasmon resonance (SPR) measurement.",
+    suggestedMethodology: `Controlled multi-variable empirical trial for "${targetTitle}" combining GPU-accelerated Tensor Network simulation, high-resolution spectroscopic measurement, and automated parameter sweeps.`,
     independentVariables: [
-      "Small-molecule Drug Z Concentration (0.1 nM to 10 µM)",
-      "Temperature variation (295K to 310K)",
-      "Qubit stabilizer error threshold (0.01% to 1.0%)"
+      `Primary System Parameter / Field Intensity for: ${targetTitle}`,
+      "Operating Temperature range (77K to 300K)",
+      "Coupling coefficient / stabilizer threshold (0.01% to 1.0%)"
     ],
     dependentVariables: [
-      "Protein folding rate constant (k_fold, s^-1)",
-      "Binding affinity (Kd, nM)",
-      "Aggravated Tau amyloid degradation %"
+      "State transition threshold / binding affinity",
+      "Signal-to-noise ratio and structural stability metric",
+      "Systemic energy dissipation rate"
     ],
     recommendedControls: [
-      "Negative Control: Vehicle-only DMSO control without Drug Z",
-      "Positive Control: Established amyloid inhibitor (EGCG)",
-      "Scrambled Peptidic Sequence Control"
+      "Negative Control: Baseline system state without active stabilization",
+      "Positive Control: Established reference benchmark compound/material",
+      "Scrambled State Control"
     ],
     requiredResources: [
       { item: "8x NVIDIA H100 GPU Cluster (1,000 Compute Hours)", category: "Compute", estimatedCost: "$25,000" },
-      { item: "Recombinant Human Gene X Protein & Drug Z Compound", category: "Reagents", estimatedCost: "$18,000" },
-      { item: "Biacore T200 Surface Plasmon Resonance (SPR)", category: "Lab Equipment", estimatedCost: "$12,000" },
-      { item: "OpenAlex & Protein Data Bank (PDB) Structural Datasets", category: "Datasets", estimatedCost: "$0 (Open Data)" }
+      { item: "High-Purity Reference Samples & Synthesis Reagents", category: "Materials", estimatedCost: "$18,000" },
+      { item: "Advanced Spectroscopic & Diagnostic Apparatus", category: "Lab Equipment", estimatedCost: "$12,000" },
+      { item: "OpenAlex & Physical Literature Datasets", category: "Datasets", estimatedCost: "$0 (Open Data)" }
     ],
     totalEstimatedCostUSD: "$55,000",
     estimatedDurationMonths: 6,
     evaluationMetrics: [
-      "Root Mean Square Deviation (RMSD) < 1.5 Å vs PDB ground truth",
-      "Statistically significant p-value < 0.001 across N=5 experimental replicates",
+      "Statistical variance p-value < 0.001 across N=5 experimental replicates",
+      "Model prediction accuracy > 92% vs empirical ground truth",
       "Grant Fit Score validation > 90/100"
     ],
-    safetyAndEthicalConsiderations: "Biosafety Level 1 (BSL-1) compliant. All biological samples are non-pathogenic recombinant human proteins."
+    safetyAndEthicalConsiderations: "Standard laboratory safety guidelines apply. Operational parameters comply with environmental safety standards."
   };
 
   res.json(plan);

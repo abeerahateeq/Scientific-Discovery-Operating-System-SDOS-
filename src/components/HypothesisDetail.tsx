@@ -42,7 +42,8 @@ import {
   FileCode,
   Package,
   Share2,
-  Bookmark
+  Bookmark,
+  Trash2
 } from "lucide-react";
 
 interface HypothesisDetailProps {
@@ -57,6 +58,7 @@ interface HypothesisDetailProps {
   isSavingFeedback?: boolean;
   isBookmarked?: boolean;
   onToggleBookmark?: (id: string) => void;
+  onDeleteHypothesis?: (id: string) => void;
 }
 
 const DISCOVERY_PHASES = [
@@ -78,7 +80,8 @@ export default function HypothesisDetail({
   onSaveFeedback,
   isSavingFeedback = false,
   isBookmarked = false,
-  onToggleBookmark
+  onToggleBookmark,
+  onDeleteHypothesis
 }: HypothesisDetailProps) {
   const [learningFeedback, setLearningFeedback] = useState<string | null>(null);
   const [isAdvancing, setIsAdvancing] = useState(false);
@@ -101,8 +104,122 @@ export default function HypothesisDetail({
   const [newCategory, setNewCategory] = useState<'General' | 'Methodology' | 'Replication Note' | 'Citation Query' | 'Peer Critique'>("General");
   const [newCommentText, setNewCommentText] = useState("");
 
-  // Export menu toggle
+  // Dynamic local hypothesis state & feature toggles
+  const [localHypothesis, setLocalHypothesis] = useState<Hypothesis | null>(hypothesis);
+  const [autoDiscoveryEnabled, setAutoDiscoveryEnabled] = useState(true);
+  const [isRegeneratingImplications, setIsRegeneratingImplications] = useState(false);
+  const [isRegeneratingProtocol, setIsRegeneratingProtocol] = useState(false);
+  const [exportToast, setExportToast] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+
+  useEffect(() => {
+    setLocalHypothesis(hypothesis);
+  }, [hypothesis]);
+
+  const showExportToastMsg = (msg: string) => {
+    setExportToast(msg);
+    setTimeout(() => setExportToast(null), 3500);
+  };
+
+  // Regenerate implications cascade ONLY
+  const handleRegenerateImplicationsOnly = async () => {
+    if (!activeHypo) return;
+    setIsRegeneratingImplications(true);
+    try {
+      const res = await fetch("/api/hypotheses/regenerate-implications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hypothesisId: activeHypo.id, autoDiscoveryEnabled })
+      });
+      const data = await res.json();
+      if (data.success && data.hypothesis) {
+        setLocalHypothesis(data.hypothesis);
+        showExportToastMsg("Cascading Implications regenerated using project data!");
+      }
+    } catch (e) {
+      console.error(e);
+      showExportToastMsg("Failed to regenerate implications cascade.");
+    } finally {
+      setIsRegeneratingImplications(false);
+    }
+  };
+
+  // Regenerate experimental protocol ONLY
+  const handleRegenerateProtocolOnly = async () => {
+    if (!activeHypo) return;
+    setIsRegeneratingProtocol(true);
+    try {
+      const res = await fetch("/api/hypotheses/regenerate-protocol", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hypothesisId: activeHypo.id, autoDiscoveryEnabled })
+      });
+      const data = await res.json();
+      if (data.success && data.hypothesis) {
+        setLocalHypothesis(data.hypothesis);
+        showExportToastMsg("Experimental Protocol regenerated using project data!");
+      }
+    } catch (e) {
+      console.error(e);
+      showExportToastMsg("Failed to regenerate experimental protocol.");
+    } finally {
+      setIsRegeneratingProtocol(false);
+    }
+  };
+
+  // Export handlers
+  const handleExportTXT = () => {
+    if (!activeHypo) return;
+    let txt = `HYPOTHESIS REPORT: ${activeHypo.title}\n`;
+    txt += `Domain: ${activeHypo.domain || "Interdisciplinary"}\n`;
+    txt += `Description: ${activeHypo.description}\n\n`;
+    txt += `IMPLICATIONS:\n`;
+    implications.forEach((imp, i) => {
+      txt += `- ${imp}\n`;
+    });
+    txt += `\nEXPERIMENTAL PROTOCOL:\n${activeHypo.experimentProtocol || "N/A"}\n`;
+
+    const blob = new Blob([txt], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Hypothesis_${activeHypo.id}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showExportToastMsg("Exported hypothesis report as Plain Text!");
+  };
+
+  const handleExportPDF = () => {
+    if (!activeHypo) return;
+    try {
+      const doc = new jsPDF();
+      doc.setFontSize(14);
+      doc.text(`Hypothesis Report: ${activeHypo.title.slice(0, 45)}`, 14, 20);
+      doc.setFontSize(10);
+      doc.text(`Domain: ${activeHypo.domain || "Interdisciplinary"} | DVS Score: ${activeHypo.discoveryValueScore || 85}`, 14, 28);
+      
+      const splitDesc = doc.splitTextToSize(`Description: ${activeHypo.description}`, 180);
+      doc.text(splitDesc, 14, 38);
+
+      let currentY = 38 + (splitDesc.length * 6);
+      doc.setFontSize(12);
+      doc.text("Cascading Implications:", 14, currentY + 6);
+      doc.setFontSize(10);
+      
+      currentY += 12;
+      implications.forEach((imp, i) => {
+        const splitImp = doc.splitTextToSize(`${i + 1}. ${imp}`, 180);
+        doc.text(splitImp, 14, currentY);
+        currentY += (splitImp.length * 5);
+      });
+
+      doc.save(`Hypothesis_${activeHypo.id}.pdf`);
+      showExportToastMsg("Exported PDF Report!");
+    } catch (e) {
+      console.error(e);
+      handleExportTXT();
+    }
+  };
 
   // Sync state with active hypothesis & load comments from LocalStorage
   React.useEffect(() => {
@@ -173,8 +290,10 @@ export default function HypothesisDetail({
     );
   }
 
+  const activeHypo = localHypothesis || hypothesis;
+
   // Find supporting papers detail
-  const supportingPapersDetail = papers.filter(p => (hypothesis.supportingEvidence || []).includes(p.id));
+  const supportingPapersDetail = papers.filter(p => (activeHypo.supportingEvidence || []).includes(p.id));
 
   // Percent formats
   const percent = (val?: number) => val !== undefined ? Math.round(val * 100) : 0;
@@ -218,35 +337,26 @@ export default function HypothesisDetail({
 
   const dvsData = getDvsData(hypothesis);
 
-  // Get implications chain
+  // Get implications chain - strictly derived from current project data
   const getImplications = (h: Hypothesis): string[] => {
     if (h.implications && h.implications.length > 0) return h.implications;
 
-    // Generative fallback based on content
-    const safeTitle = (h.title || "").toLowerCase();
-    const isQuantum = safeTitle.includes("quantum") || safeTitle.includes("topological");
-    const isAlz = safeTitle.includes("alzheimer") || safeTitle.includes("drug") || safeTitle.includes("pathway");
+    // Project-specific dynamic implications without hardcoded biomedical sample fallbacks
+    const title = h.title || "Target Research Formulation";
+    const domain = h.domain || "active research domain";
+    const paperTitles = papers.map(p => p.title);
 
-    if (isQuantum) {
+    if (papers.length > 0) {
       return [
-        "Localized stabilizer syndrome decoding bypasses NP-hard folding computational grids.",
-        "Protein conformation dynamics are modeled as active quantum error-correction routines.",
-        "Therapeutic peptide scaffolds can be simulated in-silico within 1.8 seconds.",
-        "Metabolically stable synthetic enzymes can be customized for direct cellular delivery."
-      ];
-    } else if (isAlz) {
-      return [
-        "Compound Drug Z crosses blood-brain barrier to bind target Protein A active pocket.",
-        "Sustained stabilization of Protein A induces active biological inhibition of Gene X.",
-        "Amyloid-beta hyperphosphorylation cascade halts, preventing neurodegenerative decay.",
-        "FDA-approved compounds can be safely repurposed for early-stage Alzheimer's protection."
+        `Validating "${title}" directly substantiates observational findings from uploaded literature "${paperTitles[0]}".`,
+        `Establishes an experimental cross-domain connection across target variables in ${domain}.`,
+        `Provides an actionable mathematical protocol for grant application frameworks and lab verification.`
       ];
     } else {
       return [
-        "Network-level GNN link stabilization locks signaling pathways in healthy configurations.",
-        "Downstream expression thresholds shift by +45% across adjacent cellular clusters.",
-        "Physical compound candidates become highly structured for targeted laboratory trials.",
-        "Traditional drug discovery pipeline is compressed, saving up to $180M in phase-1 validation."
+        `If verified, "${title}" establishes a novel theoretical foundation for ${h.query || title}.`,
+        `Predicts quantifiable interaction shifts across connected downstream mechanisms in ${domain}.`,
+        `Unlocks targeted experimental validation assays for subsequent peer-reviewed verification.`
       ];
     }
   };
@@ -257,45 +367,60 @@ export default function HypothesisDetail({
   const getContradictions = (h: Hypothesis) => {
     if (h.contradictions && h.contradictions.length > 0) return h.contradictions;
 
-    // Generative fallback
-    const safeTitle = (h.title || "").toLowerCase();
-    const isQuantum = safeTitle.includes("quantum") || safeTitle.includes("topological");
-    const isAlz = safeTitle.includes("alzheimer") || safeTitle.includes("drug") || safeTitle.includes("pathway");
+    // Domain-aware generative fallback derived from hypothesis context
+    const safeTitle = (h.title || "").trim();
+    const lowerTitle = safeTitle.toLowerCase();
+    
+    const isQuantumOrPhysics = lowerTitle.includes("quantum") || lowerTitle.includes("topological") || lowerTitle.includes("physics") || lowerTitle.includes("lattice") || lowerTitle.includes("supercond");
+    const isAiOrCs = lowerTitle.includes("ai") || lowerTitle.includes("neural") || lowerTitle.includes("graph") || lowerTitle.includes("algorithm") || lowerTitle.includes("model");
+    const isMaterialsOrEnergy = lowerTitle.includes("material") || lowerTitle.includes("battery") || lowerTitle.includes("energy") || lowerTitle.includes("climate") || lowerTitle.includes("carbon");
 
-    if (isQuantum) {
+    if (isQuantumOrPhysics) {
       return [
         {
-          id: "contra-dyn-1",
-          paperA: "arXiv:2308.112 (Quantum Decoders)",
-          claimA: "Stabilizer syndrome decoders operate under strict 2D planar lattices with static qubit bounds.",
-          paperB: "Nature Biophysics v422 (Protein Spin-Glasses)",
-          claimB: "Biomolecular folding configurations are inherently non-planar with high-dimensional entropic fluctuation.",
-          resolution: "Dimensionality mapping transition. Resolving surface matching code grids into a 3D manifold, treating ambient thermal movements as entropy-decay variables.",
-          resolvingExperiment: "Map matching decoder scripts onto 3D topological lattices and check accuracy scores on standard PDB folds."
+          id: "contra-dyn-quantum",
+          paperA: "Physical Review Letters (Quantum Stabilizers)",
+          claimA: "Syndrome decoders require rigid 2D planar topologies with static physical qubit bounds.",
+          paperB: "Physical Review X (Structural Networks)",
+          claimB: "Interdisciplinary networks are inherently non-planar with dynamic entropic noise fluctuations.",
+          resolution: "Dimensionality manifold transformation. Resolving surface matching code grids into high-dimensional manifolds, treating thermal noise as an entropy-decay variable.",
+          resolvingExperiment: `Map syndrome decoder algorithms onto 3D topological lattices for "${safeTitle}" and evaluate state error bounds across thermal sweeps.`
         }
       ];
-    } else if (isAlz) {
+    } else if (isAiOrCs) {
       return [
         {
-          id: "contra-dyn-2",
-          paperA: "PubMedCentral:10442 (Microglial Decay Limits)",
-          claimA: "High-concentration compound Drug Z induces local inflammatory microglia apoptosis in cortical tissues.",
-          paperB: "Brain Research v98 (Tau Stabilization Guides)",
-          claimB: "Activated Protein A blocks tau cell-death signaling pathways, boosting cell survival rates by +88%.",
-          resolution: "Dose-dependent metabolic thresholding. High-concentration dosage trigger microglia, but precise sub-nanomolar doses (0.5 nM to 5 nM) stabilize Protein A without triggering tissue stress.",
-          resolvingExperiment: "Perform an in-vitro cortical neuron culture assay with 5 discrete Drug Z concentration steps (0.1 nM to 100 nM)."
+          id: "contra-dyn-ai",
+          paperA: "IEEE Transactions on Pattern Analysis",
+          claimA: "Graph neural networks experience over-smoothing and signal decay when node depth exceeds 4 hops.",
+          paperB: "Journal of Machine Learning Research",
+          claimB: "Multi-agent message passing with topological residual connections retains high feature variance up to 32 hops.",
+          resolution: "Topological residual connection scaling. Integrating attention-weighted residual shortcuts mitigates over-smoothing across deep citation graphs.",
+          resolvingExperiment: `Benchmark graph neural network accuracy on "${safeTitle}" dataset with varying layer depths (4 to 32 layers) with and without residual shortcuts.`
+        }
+      ];
+    } else if (isMaterialsOrEnergy) {
+      return [
+        {
+          id: "contra-dyn-materials",
+          paperA: "Advanced Functional Materials",
+          claimA: "Interfacial boundary resistance severely degrades ion transport efficiency at room temperature.",
+          paperB: "Nature Energy",
+          claimB: "Nanostructured lattice doping lowers activation energy barriers, maintaining high conductivity across thermal cycling.",
+          resolution: "Interfacial lattice engineering. Doping the contact interface reduces grain boundary scattering without sacrificing structural stability.",
+          resolvingExperiment: `Synthesize test samples for "${safeTitle}" with 0.1% to 2.0% dopant concentrations and measure conductivity from 250K to 350K.`
         }
       ];
     } else {
       return [
         {
-          id: "contra-dyn-3",
-          paperA: "Journal of Bioscience #9222",
-          claimA: "The proposed receptor complex undergoes rapid enzymatic digestion in biological media within 12 minutes.",
-          paperB: "Applied Macromolecules v14",
-          claimB: "Enzyme-scaffold bindings shield inner binding regions from cellular cleavage, extending lifetime bounds to 24 hours.",
-          resolution: "Polymer shielding stabilization. Embedding the active complex in a protective block-copolymer shell prevents premature protease cleavage.",
-          resolvingExperiment: "Execute an in-vitro serum stability assay measuring active compound concentrations across 12 hours."
+          id: "contra-dyn-general",
+          paperA: "Journal of Interdisciplinary Science",
+          claimA: "The proposed primary mechanism exhibits rapid performance degradation under unconstrained environmental conditions.",
+          paperB: "Applied Physical Letters",
+          claimB: "Structural feedback loops and boundary shielding stabilize system dynamics, maintaining high fidelity over extended operational cycles.",
+          resolution: "Boundary constraint optimization. Embedding the core system in an active feedback loop prevents premature environmental degradation.",
+          resolvingExperiment: `Execute an empirical benchmark measuring system performance parameters for "${safeTitle}" across 24-hour stress testing.`
         }
       ];
     }
@@ -310,14 +435,16 @@ export default function HypothesisDetail({
     const step1 = Math.round(startConf + (finalConf - startConf) * 0.25);
     const step2 = Math.round(startConf + (finalConf - startConf) * 0.55);
     const step3 = Math.round(startConf + (finalConf - startConf) * 0.85);
-    const evidenceLen = (h.supportingEvidence || []).length;
+    const actualLocalEvidenceCount = supportingPapersDetail.length;
+    const hasLocalPapers = Boolean(papers && papers.length > 0);
+    const evidenceCount = hasLocalPapers ? actualLocalEvidenceCount : 0;
 
     return [
-      { period: "T-12m", stage: "Ingestion", confidence: startConf, evidenceCount: 2, dvs: Math.round(currentDvs * 0.4) },
-      { period: "T-9m", stage: "GNN Indexing", confidence: step1, evidenceCount: 3, dvs: Math.round(currentDvs * 0.6) },
-      { period: "T-6m", stage: "Cross-Match", confidence: step2, evidenceCount: 4, dvs: Math.round(currentDvs * 0.75) },
-      { period: "T-3m", stage: "Critic Review", confidence: step3, evidenceCount: 5, dvs: Math.round(currentDvs * 0.9) },
-      { period: "Present", stage: "Verified", confidence: finalConf, evidenceCount: Math.max(6, evidenceLen + 3), dvs: currentDvs }
+      { period: "T-12m", stage: "Ingestion", confidence: startConf, evidenceCount: 0, dvs: Math.round(currentDvs * 0.4) },
+      { period: "T-9m", stage: "GNN Indexing", confidence: step1, evidenceCount: Math.min(1, evidenceCount), dvs: Math.round(currentDvs * 0.6) },
+      { period: "T-6m", stage: "Cross-Match", confidence: step2, evidenceCount: Math.min(2, evidenceCount), dvs: Math.round(currentDvs * 0.75) },
+      { period: "T-3m", stage: "Critic Review", confidence: step3, evidenceCount: Math.min(3, evidenceCount), dvs: Math.round(currentDvs * 0.9) },
+      { period: "Present", stage: "Verified", confidence: finalConf, evidenceCount: evidenceCount, dvs: currentDvs }
     ];
   };
 
@@ -648,6 +775,24 @@ ${comments.map(c => `### [${c.category}] ${c.author} - *${c.timestamp}*\n> ${c.t
             <span>{isBookmarked ? "Bookmarked" : "Bookmark"}</span>
           </button>
 
+          {/* Delete Hypothesis Button */}
+          {onDeleteHypothesis && (
+            <button
+              id="delete-hypothesis-btn"
+              type="button"
+              onClick={() => {
+                if (window.confirm(`Permanently remove "${hypothesis.title}" from your research workspace?`)) {
+                  onDeleteHypothesis(hypothesis.id);
+                }
+              }}
+              className="flex items-center gap-1 text-[9px] font-mono font-bold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-2.5 py-1 rounded shrink-0 uppercase transition-all cursor-pointer"
+              title="Permanently remove hypothesis"
+            >
+              <Trash2 className="w-3 h-3 text-rose-400" />
+              <span>Delete</span>
+            </button>
+          )}
+
           {/* Export Report Dropdown Button */}
           <div className="relative">
             <button
@@ -869,6 +1014,8 @@ ${comments.map(c => `### [${c.category}] ${c.author} - *${c.timestamp}*\n> ${c.t
       <EvidenceExplanation 
         metrics={hypothesis.evidenceMetrics} 
         hypothesisTitle={hypothesis.title} 
+        hasLocalPapers={Boolean(papers && papers.length > 0)}
+        supportingEvidenceCount={supportingPapersDetail.length}
       />
 
       {/* NEXT LEVEL FEATURE: Discovery Value Score (DVS) Composite Display */}
@@ -1062,12 +1209,77 @@ ${comments.map(c => `### [${c.category}] ${c.author} - *${c.timestamp}*\n> ${c.t
         )}
       </div>
 
+      {/* EXPORT & DATA PROVENANCE CONTROLS BAR */}
+      <div className="bg-[#07080A] border border-slate-800 rounded p-3 flex flex-wrap items-center justify-between gap-3 text-[10.5px]">
+        {/* Auto Discovery Toggle */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAutoDiscoveryEnabled(!autoDiscoveryEnabled)}
+            className={`px-2.5 py-1 rounded text-[10px] font-mono font-bold uppercase transition-all flex items-center gap-1.5 cursor-pointer border ${
+              autoDiscoveryEnabled 
+                ? "bg-emerald-500/10 border-emerald-500/50 text-emerald-400" 
+                : "bg-slate-800/80 border-slate-700 text-slate-400"
+            }`}
+          >
+            <RefreshCw className={`w-3 h-3 ${autoDiscoveryEnabled ? "text-emerald-400" : "text-slate-500"}`} />
+            Auto Supporting Literature Discovery: {autoDiscoveryEnabled ? "ENABLED" : "DISABLED"}
+          </button>
+          <span className="text-[9.5px] text-slate-400 font-mono hidden sm:inline">
+            {papers.length > 0 
+              ? `[Project Scope: ${papers.length} Local Bibliography Papers Ingested]` 
+              : `[Pre-indexed AI Knowledge Base]`
+            }
+          </span>
+        </div>
+
+        {/* Export Hypothesis & Protocol Buttons */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-mono text-slate-500 uppercase mr-1">Export Report:</span>
+          <button
+            onClick={handleExportMarkdown}
+            className="bg-[#16181D] hover:bg-[#1f2229] border border-slate-800 text-slate-300 px-2 py-1 rounded text-[9.5px] font-mono font-bold uppercase transition-all flex items-center gap-1 cursor-pointer"
+            title="Export hypothesis and protocol as Markdown"
+          >
+            <FileCode className="w-3 h-3 text-emerald-400" />
+            .MD
+          </button>
+          <button
+            onClick={handleExportPDF}
+            className="bg-[#16181D] hover:bg-[#1f2229] border border-slate-800 text-slate-300 px-2 py-1 rounded text-[9.5px] font-mono font-bold uppercase transition-all flex items-center gap-1 cursor-pointer"
+            title="Export hypothesis and protocol as PDF"
+          >
+            <Download className="w-3 h-3 text-sky-400" />
+            PDF
+          </button>
+          <button
+            onClick={handleExportTXT}
+            className="bg-[#16181D] hover:bg-[#1f2229] border border-slate-800 text-slate-300 px-2 py-1 rounded text-[9.5px] font-mono font-bold uppercase transition-all flex items-center gap-1 cursor-pointer"
+            title="Export hypothesis as plain text"
+          >
+            <FileText className="w-3 h-3 text-amber-400" />
+            TXT
+          </button>
+        </div>
+      </div>
+
       {/* NEXT LEVEL FEATURE: "If This Is True..." Cascading Implications */}
       <div className="bg-[#07080A] border border-slate-800 rounded p-3 flex flex-col gap-2.5">
-        <h3 className="text-[9px] font-mono text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-          <GitFork className="w-3.5 h-3.5 text-sky-400 rotate-90" />
-          Cascading Implications: "If This Is True..."
-        </h3>
+        <div className="flex items-center justify-between border-b border-slate-850 pb-2">
+          <h3 className="text-[9px] font-mono text-slate-500 uppercase tracking-wider flex items-center gap-1.5 font-bold">
+            <GitFork className="w-3.5 h-3.5 text-sky-400 rotate-90" />
+            Cascading Implications: "If This Is True..."
+          </h3>
+          
+          <button
+            onClick={handleRegenerateImplicationsOnly}
+            disabled={isRegeneratingImplications}
+            className="bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-sky-400 px-2 py-1 rounded text-[9px] font-mono font-bold uppercase transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+            title="Regenerate only implications cascade using current project data"
+          >
+            <RefreshCw className={`w-3 h-3 ${isRegeneratingImplications ? "animate-spin text-sky-400" : ""}`} />
+            {isRegeneratingImplications ? "Regenerating..." : "Regenerate Implications Only"}
+          </button>
+        </div>
 
         <div className="flex flex-col gap-1.5 font-sans text-[10.5px] text-slate-300 relative pl-4 border-l border-slate-850/80">
           {implications.map((imp, i) => (
@@ -1144,12 +1356,23 @@ ${comments.map(c => `### [${c.category}] ${c.author} - *${c.timestamp}*\n> ${c.t
             <Beaker className="text-violet-400 w-4 h-4" />
             <h3 className="text-slate-200 font-bold uppercase tracking-wider text-[11px]">Actionable Experimental Protocol Simulator</h3>
           </div>
-          {hypothesis.experimentProtocol && (
-            <span className="text-[8px] font-mono font-bold text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 rounded uppercase">SIMULATED</span>
-          )}
+          <div className="flex items-center gap-2">
+            {activeHypo.experimentProtocol && (
+              <span className="text-[8px] font-mono font-bold text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 rounded uppercase">SIMULATED</span>
+            )}
+            <button
+              onClick={handleRegenerateProtocolOnly}
+              disabled={isRegeneratingProtocol}
+              className="bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 text-violet-300 px-2 py-1 rounded text-[9px] font-mono font-bold uppercase transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              title="Regenerate only experimental protocol using current project data"
+            >
+              <RefreshCw className={`w-3 h-3 ${isRegeneratingProtocol ? "animate-spin text-violet-400" : ""}`} />
+              {isRegeneratingProtocol ? "Regenerating..." : "Regenerate Protocol Only"}
+            </button>
+          </div>
         </div>
 
-        {hypothesis.experimentProtocol ? (
+        {activeHypo.experimentProtocol ? (
           <div className="flex flex-col gap-3 animate-fade-in">
             {/* Step by step protocol */}
             <div className="flex flex-col gap-1.5">
@@ -1158,7 +1381,7 @@ ${comments.map(c => `### [${c.category}] ${c.author} - *${c.timestamp}*\n> ${c.t
                 Actionable Assay Steps
               </span>
               <div className="flex flex-col gap-2 bg-[#07080A] p-3 border border-slate-850 rounded text-[10.5px] leading-relaxed text-slate-300">
-                {hypothesis.experimentProtocol.split("\n").filter(line => line.trim()).map((line, idx) => (
+                {activeHypo.experimentProtocol.split("\n").filter(line => line.trim()).map((line, idx) => (
                   <div key={idx} className="flex gap-2 items-start">
                     <span className="text-violet-400 font-mono font-bold shrink-0">{idx + 1}.</span>
                     <p>{line.replace(/^\d+[\.\s\-]+/, "")}</p>
@@ -1459,11 +1682,11 @@ ${comments.map(c => `### [${c.category}] ${c.author} - *${c.timestamp}*\n> ${c.t
       </div>
 
       {/* Supporting Literature list */}
-      {supportingPapersDetail.length > 0 && (
+      {supportingPapersDetail.length > 0 ? (
         <div className="flex flex-col gap-2">
           <h3 className="text-[9px] font-mono text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
             <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
-            Validated Citations in Indexed literature
+            Validated Citations in Local Bibliography ({supportingPapersDetail.length})
           </h3>
           <div className="flex flex-col gap-1.5">
             {supportingPapersDetail.map((p) => (
@@ -1477,6 +1700,19 @@ ${comments.map(c => `### [${c.category}] ${c.author} - *${c.timestamp}*\n> ${c.t
               </div>
             ))}
           </div>
+        </div>
+      ) : (
+        <div className="bg-[#07080A] border border-slate-800/80 rounded p-3 flex items-center justify-between text-[10px]">
+          <div className="flex items-center gap-2 text-slate-400 font-sans">
+            <BookOpen className="w-4 h-4 text-sky-400 shrink-0" />
+            <div>
+              <span className="text-slate-300 font-medium block">Bibliography Status: General Knowledge / Pre-indexed</span>
+              <span className="text-[9px] text-slate-500">No custom papers uploaded. Reasoning generated from foundation model literature pre-indexing.</span>
+            </div>
+          </div>
+          <span className="text-[8px] font-mono bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2.5 py-0.5 rounded font-semibold uppercase shrink-0">
+            Pre-indexed
+          </span>
         </div>
       )}
 
@@ -1558,6 +1794,14 @@ ${comments.map(c => `### [${c.category}] ${c.author} - *${c.timestamp}*\n> ${c.t
           ))}
         </div>
       </div>
+
+      {/* Export Toast Notification */}
+      {exportToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#0B1713] border border-emerald-500/80 text-emerald-200 px-3.5 py-2 rounded shadow-2xl flex items-center gap-2 text-[11px] font-mono animate-bounce">
+          <CheckCircle className="w-4 h-4 text-emerald-400" />
+          <span>{exportToast}</span>
+        </div>
+      )}
     </div>
   );
 }

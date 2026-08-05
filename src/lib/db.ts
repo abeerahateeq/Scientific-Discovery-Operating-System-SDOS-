@@ -472,6 +472,74 @@ class JsonDatabase {
     this.data.interdisciplinaryExchangeLogs = val;
     this.save();
   }
+
+  // Deletion and Reset Helpers
+  public deletePaper(paperId: string) {
+    this.data.papers = this.data.papers.filter((p) => p.id !== paperId);
+
+    // Clean up graph nodes tied to this paper
+    const paperNodeId = `paper-node-${paperId}`;
+    this.data.nodes = this.data.nodes.filter(
+      (n) => n.id !== paperId && n.id !== paperNodeId
+    );
+
+    // Clean up links referencing this paper or paper node
+    this.data.links = this.data.links.filter((l) => {
+      const s = typeof l.source === "string" ? l.source : (l.source as any).id;
+      const t = typeof l.target === "string" ? l.target : (l.target as any).id;
+      if (s === paperNodeId || t === paperNodeId || s === paperId || t === paperId) {
+        return false;
+      }
+      if (l.evidencePaperIds && l.evidencePaperIds.includes(paperId)) {
+        l.evidencePaperIds = l.evidencePaperIds.filter((id) => id !== paperId);
+      }
+      return true;
+    });
+
+    // Clean up hypotheses evidence
+    this.data.hypotheses.forEach((h) => {
+      if (h.supportingEvidence) {
+        h.supportingEvidence = h.supportingEvidence.filter((id) => id !== paperId);
+      }
+    });
+
+    this.save();
+  }
+
+  public clearAllPapers() {
+    this.data.papers = [];
+    this.data.nodes = [];
+    this.data.links = [];
+    this.data.hypotheses = [];
+    this.save();
+  }
+
+  public deleteHypothesis(hypothesisId: string) {
+    this.data.hypotheses = this.data.hypotheses.filter((h) => h.id !== hypothesisId);
+    this.save();
+  }
+
+  public deleteHypothesesBatch(ids: string[]) {
+    this.data.hypotheses = this.data.hypotheses.filter((h) => !ids.includes(h.id));
+    this.save();
+  }
+
+  public clearAllHypotheses() {
+    this.data.hypotheses = [];
+    this.save();
+  }
+
+  public restoreSeedData() {
+    this.data = {
+      papers: JSON.parse(JSON.stringify(SEED_PAPERS)),
+      nodes: JSON.parse(JSON.stringify(SEED_NODES)),
+      links: JSON.parse(JSON.stringify(SEED_LINKS)),
+      hypotheses: JSON.parse(JSON.stringify(SEED_HYPOTHESES)),
+      bounties: JSON.parse(JSON.stringify(SEED_BOUNTIES)),
+      interdisciplinaryExchangeLogs: JSON.parse(JSON.stringify(SEED_EXCHANGE_LOGS))
+    };
+    this.save();
+  }
 }
 
 export const db = new JsonDatabase();

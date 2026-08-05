@@ -2,26 +2,10 @@ import { Router } from "express";
 import { db } from "../../lib/db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { interdisciplinarySchema } from "../../lib/schemas.js";
-import { GoogleGenAI } from "@google/genai";
+import { getAiClient } from "../helpers.js";
 import { Hypothesis, InterdisciplinaryExchangeLog } from "../../types.js";
 
 const router = Router();
-
-// Initialize Gemini API helper
-function getAiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
-    return new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
-  }
-  return null;
-}
 
 // 1. Get all interdisciplinary logs
 router.get("/logs", requireAuth, (req, res) => {
@@ -46,7 +30,7 @@ router.post("/trigger", requireAuth, async (req, res) => {
   let newHypothesisDescription = "";
   let connectionSummary = "";
 
-  const ai = getAiClient();
+  const ai = getAiClient(req);
   if (ai) {
     try {
       const prompt = `You are the Scientific Discovery OS (SDOS) Interdisciplinary Multi-Agent Orchestrator.

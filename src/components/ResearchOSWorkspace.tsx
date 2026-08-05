@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
   BookOpen, 
   FileText, 
@@ -20,7 +20,11 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   RefreshCw,
-  Cpu
+  Cpu,
+  Filter,
+  Upload,
+  Globe,
+  Database
 } from "lucide-react";
 import { 
   Hypothesis, 
@@ -54,11 +58,48 @@ export default function ResearchOSWorkspace({ hypotheses, papers = [], onSelectH
 
   // Custom agent creation form
   const [newAgentName, setNewAgentName] = useState("");
-  const [newAgentDomain, setNewAgentDomain] = useState("Cancer Oncology");
+  const [newAgentDomain, setNewAgentDomain] = useState("Quantum & Materials Science");
   const [newAgentPrompt, setNewAgentPrompt] = useState("");
   const [showAgentModal, setShowAgentModal] = useState(false);
 
+  // Proposal Investor / Funding Program Selection state
+  const [selectedFunderMode, setSelectedFunderMode] = useState<string>("grant-nsf-02");
+  const [customFunderName, setCustomFunderName] = useState("Schmidt Science Fellows / DOE Energy Science");
+  const [customFunderCode, setCustomFunderCode] = useState("SCHMIDT-DOE-2026");
+  const [customTargetBudget, setCustomTargetBudget] = useState("$2,500,000");
+  const [customFunderFocus, setCustomFunderFocus] = useState("Cross-domain physical simulation & rapid experimental translation");
+
+  // Citation Evidence Filter toggle state ("all" | "user_uploaded" | "system_discovered")
+  const [citationFilterMode, setCitationFilterMode] = useState<"all" | "user_uploaded" | "system_discovered">("all");
+
   const selectedHypo = hypotheses.find(h => h.id === selectedHypothesisId) || hypotheses[0];
+
+  // Filter evidence based on user-uploaded vs system-discovered citation source
+  const filteredEvidence = useMemo(() => {
+    if (!selectedHypo || !selectedHypo.supportingEvidence) return [];
+    const evidenceList = selectedHypo.supportingEvidence;
+    if (citationFilterMode === "all") return evidenceList;
+
+    const userUploadedTitles = papers
+      .filter(p => p.sourceType === 'user_uploaded' || p.id.startsWith('usr') || p.id.startsWith('paper-usr'))
+      .map(p => p.title.toLowerCase());
+
+    if (citationFilterMode === "user_uploaded") {
+      return evidenceList.filter(cite => {
+        const lower = cite.toLowerCase();
+        return lower.includes("user") || lower.includes("upload") || userUploadedTitles.some(t => lower.includes(t));
+      });
+    }
+
+    if (citationFilterMode === "system_discovered") {
+      return evidenceList.filter(cite => {
+        const lower = cite.toLowerCase();
+        return !lower.includes("user") && !userUploadedTitles.some(t => lower.includes(t));
+      });
+    }
+
+    return evidenceList;
+  }, [selectedHypo, citationFilterMode, papers]);
 
   useEffect(() => {
     fetchCustomAgents();
@@ -102,13 +143,44 @@ export default function ResearchOSWorkspace({ hypotheses, papers = [], onSelectH
   const generateDraftManuscript = async () => {
     setIsLoading(true);
     try {
+      let invName = "NSF Awards";
+      let invCode = "NSF-QBIO-2026";
+      let invBudget = "$1,800,000";
+      let invFocus = "Quantum-Enhanced Biomolecular Modeling and Physical State Landscapes";
+
+      if (selectedFunderMode === "grant-nih-01") {
+        invName = "NIH RePORTER";
+        invCode = "PAR-26-089";
+        invBudget = "$2,500,000";
+        invFocus = "Cross-Domain Computational Approaches & Translational Interventions";
+      } else if (selectedFunderMode === "grant-doe-01") {
+        invName = "DOE Office of Science";
+        invCode = "DOE-BES-2026";
+        invBudget = "$3,000,000";
+        invFocus = "Advanced Materials & Computational Physical Science";
+      } else if (selectedFunderMode === "grant-darpa-01") {
+        invName = "DARPA Defense Sciences";
+        invCode = "DARPA-DSO-2026";
+        invBudget = "$4,500,000";
+        invFocus = "High-Risk Unconventional Physical & Algorithmic Paradigms";
+      } else if (selectedFunderMode === "custom") {
+        invName = customFunderName;
+        invCode = customFunderCode;
+        invBudget = customTargetBudget;
+        invFocus = customFunderFocus;
+      }
+
       const res = await fetch("/api/research-os/draft-manuscript", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: selectedHypo?.title || "Topological Decoders for Rapid Macromolecular Folding",
+          title: selectedHypo?.title || "Topological Decoders for Rapid Physical State Search",
           hypothesisId: selectedHypo?.id,
-          venue: selectedHypo?.primaryGrantMatch?.agency || "Nature Biotechnology / NIH R01 Proposal"
+          venue: `${invName} (${invCode})`,
+          investorName: invName,
+          agencyCode: invCode,
+          targetBudget: invBudget,
+          investorFocus: invFocus
         })
       });
       if (res.ok) {
@@ -229,20 +301,67 @@ export default function ResearchOSWorkspace({ hypotheses, papers = [], onSelectH
           </p>
         </div>
 
-        {/* Selected Target Hypothesis Selector */}
-        <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-lg border border-slate-800 w-full md:w-auto">
-          <span className="text-[10px] font-mono text-slate-400 uppercase whitespace-nowrap">Target Hypothesis:</span>
-          <select 
-            value={selectedHypothesisId}
-            onChange={(e) => setSelectedHypothesisId(e.target.value)}
-            className="bg-slate-900 border border-slate-700 text-xs text-emerald-300 rounded px-2 py-1 focus:outline-none focus:border-emerald-500 w-full md:w-64 truncate font-mono"
-          >
-            {hypotheses.map(h => (
-              <option key={h.id} value={h.id}>
-                {h.title}
-              </option>
-            ))}
-          </select>
+        {/* Selected Target Hypothesis Selector & Citation Filter Toggle */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-slate-950 p-2 rounded-lg border border-slate-800 w-full md:w-auto">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono text-slate-400 uppercase whitespace-nowrap">Target Hypothesis:</span>
+            <select 
+              value={selectedHypothesisId}
+              onChange={(e) => setSelectedHypothesisId(e.target.value)}
+              className="bg-slate-900 border border-slate-700 text-xs text-emerald-300 rounded px-2 py-1 focus:outline-none focus:border-emerald-500 max-w-[200px] sm:max-w-xs truncate font-mono"
+            >
+              {hypotheses.map(h => (
+                <option key={h.id} value={h.id}>
+                  {h.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Citation Evidence Source Filter Toggle */}
+          <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded border border-slate-800 text-[9px] font-mono">
+            <button
+              id="citation-filter-all"
+              onClick={() => setCitationFilterMode("all")}
+              className={`px-2 py-1 rounded transition-all cursor-pointer font-bold flex items-center gap-1 ${
+                citationFilterMode === "all"
+                  ? "bg-sky-500/20 text-sky-300 border border-sky-500/40"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              title="Show all citations and supporting evidence"
+            >
+              <Database className="w-3 h-3 text-sky-400" />
+              <span>All Evidence</span>
+            </button>
+
+            <button
+              id="citation-filter-user"
+              onClick={() => setCitationFilterMode("user_uploaded")}
+              className={`px-2 py-1 rounded transition-all cursor-pointer font-bold flex items-center gap-1 ${
+                citationFilterMode === "user_uploaded"
+                  ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              title="Filter evidence to user-uploaded papers only"
+            >
+              <Upload className="w-3 h-3 text-purple-400" />
+              <span>User Papers Only</span>
+            </button>
+
+            <button
+              id="citation-filter-system"
+              onClick={() => setCitationFilterMode("system_discovered")}
+              className={`px-2 py-1 rounded transition-all cursor-pointer font-bold flex items-center gap-1 ${
+                citationFilterMode === "system_discovered"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              title="Filter evidence to system-discovered papers & arXiv/PubMed indexes"
+            >
+              <Globe className="w-3 h-3 text-emerald-400" />
+              <span>System Papers Only</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -312,6 +431,39 @@ export default function ResearchOSWorkspace({ hypotheses, papers = [], onSelectH
       {/* Main OS View Content Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
 
+        {/* Citation Filter Active State Banner */}
+        <div id="citation-filter-banner" className="bg-[#07080A] border border-slate-800 rounded-lg p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-sky-400 shrink-0" />
+            <div>
+              <span className="font-mono text-slate-400 text-[10px] uppercase block font-bold">
+                Active Citation Filter ({citationFilterMode === "all" ? "All Evidence" : citationFilterMode === "user_uploaded" ? "User-Uploaded Papers Only" : "System-Discovered Papers Only"}):
+              </span>
+              <span className="text-slate-200 font-medium">
+                Showing <strong className="text-sky-400">{filteredEvidence.length}</strong> of <strong className="text-slate-300">{selectedHypo?.supportingEvidence?.length || 0}</strong> citation evidence sources for "{selectedHypo?.title.substring(0, 45)}..."
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {filteredEvidence.slice(0, 3).map((cite, idx) => (
+              <span key={idx} className="text-[9px] font-mono bg-slate-950 border border-slate-850 text-slate-300 px-2 py-0.5 rounded truncate max-w-[200px]">
+                • {cite}
+              </span>
+            ))}
+            {filteredEvidence.length > 3 && (
+              <span className="text-[9px] font-mono text-sky-400 font-bold bg-sky-500/10 px-1.5 py-0.5 rounded border border-sky-500/20">
+                +{filteredEvidence.length - 3} more
+              </span>
+            )}
+            {filteredEvidence.length === 0 && (
+              <span className="text-[9px] font-mono text-amber-400 italic">
+                No citations match the selected source filter mode.
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* 1. LITERATURE REVIEW GENERATOR */}
         {activeSubTab === "lit_review" && (
           <div className="space-y-6">
@@ -329,17 +481,122 @@ export default function ResearchOSWorkspace({ hypotheses, papers = [], onSelectH
                   AI Manuscript & Grant Proposal Auto-Drafter
                 </h2>
                 <p className="text-xs text-slate-400 max-w-2xl">
-                  Drafts complete, citation-backed paper manuscripts (Abstract, Introduction, Related Work, Methodology, Discussion) and funder-tailored grant proposal sections.
+                  Drafts complete, citation-backed paper manuscripts and funder-tailored grant proposal sections linked directly to your selected investor or funding agency.
                 </p>
               </div>
               <button
                 onClick={generateDraftManuscript}
                 disabled={isLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded transition-all cursor-pointer disabled:opacity-50 shrink-0"
+                className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs rounded transition-all cursor-pointer disabled:opacity-50 shrink-0 shadow-lg shadow-sky-500/10"
               >
                 {isLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                <span>{manuscript ? "Re-Draft Manuscript" : "Draft Manuscript & Proposal"}</span>
+                <span>{manuscript ? "Re-Draft Proposal & Manuscript" : "Draft Funder-Tailored Proposal"}</span>
               </button>
+            </div>
+
+            {/* Target Investor & Funding Project Selector Panel */}
+            <div id="investor-funder-selector-panel" className="bg-[#07080A] border border-sky-500/30 rounded-lg p-4 space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-850 pb-3">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs font-bold text-slate-200 uppercase tracking-wider font-mono">
+                    Target Funder / Investor Linkage Configuration
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  Select or attach any funding agency or custom investor
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-mono uppercase text-slate-400 mb-1.5 font-bold">
+                    Choose Funding Agency / Investment Program:
+                  </label>
+                  <select
+                    value={selectedFunderMode}
+                    onChange={(e) => setSelectedFunderMode(e.target.value)}
+                    className="w-full bg-slate-950 text-slate-200 text-xs rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:border-sky-500 font-sans"
+                  >
+                    <option value="grant-nsf-02">NSF Awards (NSF-QBIO-2026) — $1.8M</option>
+                    <option value="grant-nih-01">NIH RePORTER (PAR-26-089) — $2.5M</option>
+                    <option value="grant-doe-01">DOE Office of Science (DOE-BES-2026) — $3.0M</option>
+                    <option value="grant-darpa-01">DARPA Defense Sciences (DARPA-DSO-2026) — $4.5M</option>
+                    <option value="custom"> Custom Funder / Investor (Attach Custom Funder Details)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-mono uppercase text-slate-400 mb-1.5 font-bold">
+                    Linked Research Hypothesis:
+                  </label>
+                  <select
+                    value={selectedHypothesisId}
+                    onChange={(e) => setSelectedHypothesisId(e.target.value)}
+                    className="w-full bg-slate-950 text-slate-200 text-xs rounded-lg p-2.5 border border-slate-800 focus:outline-none focus:border-sky-500 font-sans truncate"
+                  >
+                    {hypotheses.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Custom Funder Input Fields if 'custom' is selected */}
+              {selectedFunderMode === "custom" && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/80 p-3 rounded-lg border border-slate-800 animate-fade-in">
+                  <div>
+                    <label className="block text-[9px] font-mono uppercase text-slate-400 mb-1 font-bold">
+                      Funder / Investor Name:
+                    </label>
+                    <input
+                      type="text"
+                      value={customFunderName}
+                      onChange={(e) => setCustomFunderName(e.target.value)}
+                      placeholder="e.g. Schmidt Futures / Horizon Europe"
+                      className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-mono uppercase text-slate-400 mb-1 font-bold">
+                      Agency / Program Code:
+                    </label>
+                    <input
+                      type="text"
+                      value={customFunderCode}
+                      onChange={(e) => setCustomFunderCode(e.target.value)}
+                      placeholder="e.g. SCHMIDT-2026-X"
+                      className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-mono uppercase text-slate-400 mb-1 font-bold">
+                      Target Budget Amount:
+                    </label>
+                    <input
+                      type="text"
+                      value={customTargetBudget}
+                      onChange={(e) => setCustomTargetBudget(e.target.value)}
+                      placeholder="e.g. $2,000,000"
+                      className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                  <div className="md:col-span-3">
+                    <label className="block text-[9px] font-mono uppercase text-slate-400 mb-1 font-bold">
+                      Funder Strategic Priority / Focus:
+                    </label>
+                    <input
+                      type="text"
+                      value={customFunderFocus}
+                      onChange={(e) => setCustomFunderFocus(e.target.value)}
+                      placeholder="e.g. High-risk cross-disciplinary physical simulation and open research translation"
+                      className="w-full bg-slate-900 border border-slate-800 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {manuscript ? (

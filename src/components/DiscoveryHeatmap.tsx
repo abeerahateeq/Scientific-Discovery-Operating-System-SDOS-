@@ -28,10 +28,10 @@ export default function DiscoveryHeatmap({ hypotheses, onSelectHypothesis }: Dis
   // Ensure standard scientific domains are included if not present
   const defaultDomains = [
     "Quantum Biophysics",
-    "Neuroscience & Synaptic Circuits",
+    "Physical Sciences & Information Theory",
     "Nanomaterials & Catalysis",
-    "Molecular Oncology",
-    "Genomics & Epigenetics",
+    "Advanced Materials & Clean Energy",
+    "Complex Systems & AI Topologies",
     "Astrophysical Plasmas"
   ];
 

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../../lib/db.js";
 import { requireAuth } from "../middleware/auth.js";
-import { createSimulatedHypothesis } from "../helpers.js";
+import { createSimulatedHypothesis, getAiClient } from "../helpers.js";
 import { 
   hypothesisSchema, 
   verificationSchema, 
@@ -9,30 +9,39 @@ import {
   experimentProtocolSchema,
   autonomousDiscoverySchema 
 } from "../../lib/schemas.js";
-import { GoogleGenAI } from "@google/genai";
 import { Hypothesis, AgentName } from "../../types.js";
 
 const router = Router();
 
-// Initialize Gemini API helper
-function getAiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
-    return new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
-  }
-  return null;
-}
-
 // 1. Get all hypotheses
 router.get("/", requireAuth, (req, res) => {
   res.json(db.hypotheses);
+});
+
+// Delete single hypothesis
+router.delete("/:id", requireAuth, (req, res) => {
+  const { id } = req.params;
+  const initialCount = db.hypotheses.length;
+  db.deleteHypothesis(id);
+  if (db.hypotheses.length === initialCount) {
+    return res.status(404).json({ error: "Hypothesis not found." });
+  }
+  console.log(`[Hypotheses] Deleted hypothesis ID: ${id}`);
+  res.json({ success: true, deletedId: id });
+});
+
+// Batch delete or clear all hypotheses
+router.delete("/", requireAuth, (req, res) => {
+  const { ids } = req.body || {};
+  if (Array.isArray(ids)) {
+    db.deleteHypothesesBatch(ids);
+    console.log(`[Hypotheses] Batch deleted ${ids.length} hypotheses`);
+    return res.json({ success: true, count: ids.length });
+  }
+  const count = db.hypotheses.length;
+  db.clearAllHypotheses();
+  console.log(`[Hypotheses] Cleared all ${count} hypotheses`);
+  res.json({ success: true, count });
 });
 
 // 2. Generate Hypothesis (Multi-Agent Research Pipeline Simulation + Real Gemini Synthesis)
@@ -69,7 +78,7 @@ router.post("/generate", requireAuth, async (req, res) => {
   log("Hypothesis Generator", "Synthesizing cross-domain concepts and formulating the mathematical hypothesis...");
 
   let newHypothesis: Hypothesis;
-  const ai = getAiClient();
+  const ai = getAiClient(req);
 
   if (ai) {
     try {
@@ -132,7 +141,7 @@ Be technically detailed and accurate, writing like a DeepMind / Nobel prize rese
         query,
         description: result.description || "Synthesized scientific model.",
         confidence: result.confidence || 0.65,
-        supportingEvidence: verifiedCitations.length > 0 ? verifiedCitations : ["paper-001", "paper-002", "paper-005"],
+        supportingEvidence: verifiedCitations,
         analogousMethods: result.analogousMethods || ["Cross-domain analogy mapping"],
         indirectLinks: result.indirectLinks || [],
         computationalFeasibility: result.computationalFeasibility || 0.75,
@@ -174,7 +183,7 @@ router.post("/verify", requireAuth, async (req, res) => {
   const hypo = hypothesesList[hypoIndex];
   console.log(`Verifying hypothesis: "${hypo.title}"`);
 
-  const ai = getAiClient();
+  const ai = getAiClient(req);
   if (ai) {
     try {
       const prompt = `You are a strict Scientific Peer Reviewer and Citation Verifier.
@@ -256,7 +265,7 @@ router.post("/advance-phase", requireAuth, (req, res) => {
   const learningWeights = [
     "High topological correlation GNN link predictors verified with +15.2% replicate stability.",
     "Refined cross-domain mapping constraints: Quantum Stabilizer analogs validated with a 94.3% structural threshold.",
-    "Pathway convergence weights updated: Synaptic lock receptors in Protein A show increased targeted affinity (+18.4%).",
+    "Pathway convergence weights updated: High-confidence interdisciplinary links show increased targeted affinity (+18.4%).",
     "Thermodynamic GNN link scoring calibrated: non-planar hydrophobic bounding values refined in model engine."
   ];
   const reasoningAdjustment = learningWeights[Math.floor(Math.random() * learningWeights.length)];
@@ -280,7 +289,7 @@ router.post("/autonomous-run", requireAuth, async (req, res) => {
     potentialBreakthroughs: 1
   };
 
-  const ai = getAiClient();
+  const ai = getAiClient(req);
   let newHypo: Hypothesis;
 
   if (ai) {
@@ -354,7 +363,7 @@ Return a valid JSON object matching this schema (do not include any prefix text 
         query: "Overnight Autonomous Discovery",
         description: result.description,
         confidence: result.confidence,
-        supportingEvidence: result.supportingEvidence.length > 0 ? result.supportingEvidence : ["paper-003", "paper-004"],
+        supportingEvidence: (result.supportingEvidence || []).filter((id: string) => db.papers.some(p => p.id === id)),
         analogousMethods: result.analogousMethods,
         indirectLinks: result.indirectLinks,
         computationalFeasibility: result.computationalFeasibility,
@@ -403,7 +412,7 @@ function getAutonomousFallback(): Hypothesis {
     query: "Overnight Autonomous Discovery",
     description: "Synthesized during the overnight 12-hour background literature sweep. This breakthrough hypothesis proposes a synthetic ribozyme engineered with a room-temperature quantum spin-glass lattice structure. The entanglement states stabilize the enzymatic active site, allowing the ribozyme to perform targeted carbon-dioxide reduction at 50,000x the speed of wild-type carboxylases in marine synthetic micro-climates.",
     confidence: 0.95,
-    supportingEvidence: ["paper-003", "paper-004"],
+    supportingEvidence: [],
     analogousMethods: [
       "Topological Ribosomal Latticing",
       "Room-Temperature Quantum Spin Entanglement Stabilization"
@@ -470,7 +479,7 @@ router.post("/tournament", requireAuth, async (req, res) => {
   ];
 
   const survivors: Hypothesis[] = [];
-  const ai = getAiClient();
+  const ai = getAiClient(req);
 
   if (ai) {
     try {
@@ -518,7 +527,7 @@ Respond ONLY with this JSON array.`;
             query,
             description: h.description || "Synthesized tournament winner.",
             confidence: h.confidence || 0.85,
-            supportingEvidence: h.supportingEvidence || ["paper-001", "paper-002"],
+            supportingEvidence: (h.supportingEvidence || []).filter((id: string) => db.papers.some(p => p.id === id)),
             analogousMethods: h.analogousMethods || ["Mathematical path isomorphism"],
             indirectLinks: h.indirectLinks || [],
             computationalFeasibility: h.computationalFeasibility || 0.80,
@@ -547,7 +556,7 @@ Respond ONLY with this JSON array.`;
           query,
           description: "This hypothesis demonstrates that the minimum energy conformations of polypeptide chains can be modeled as syndrome errors in quantum surface codes. By running localized matching decoders, we can predict folding pathways at a fraction of the computational cost of traditional grid searches, with a 92% accuracy bound.",
           confidence: 0.91,
-          supportingEvidence: ["paper-003", "paper-005"],
+          supportingEvidence: [],
           analogousMethods: ["Minimum-Weight Perfect Matching syndrome decoding", "Surface code homology checks"],
           indirectLinks: [{ source: "Topological Stabilizer Code", target: "Protein Folding Landscape", relation: "isomorphic to" }],
           computationalFeasibility: 0.94,
@@ -564,7 +573,7 @@ Respond ONLY with this JSON array.`;
           query,
           description: "We establish that the critical bounds of macromolecular phase separation (liquid-liquid demixing in cell biology) map cleanly onto topological stabilizers of a quantum lattice. Localized hydrophobic domains behave like stabilizer boundaries, locking phases under discrete topological boundaries.",
           confidence: 0.79,
-          supportingEvidence: ["paper-005"],
+          supportingEvidence: [],
           analogousMethods: ["Topological state stabilizer boundary theory", "Liquid-liquid phase separation modeling"],
           indirectLinks: [{ source: "Topological Stabilizer Code", target: "Protein Folding Landscape", relation: "isomorphic to" }],
           computationalFeasibility: 0.82,
@@ -581,7 +590,7 @@ Respond ONLY with this JSON array.`;
           query,
           description: "We propose that biological chaperone proteins act as error-correction syndrome readers. When a protein folds pathologically, chaperone bindings map onto stabilizer error checks, allowing us to mathematically model and optimize molecular therapeutics that assist chaperones.",
           confidence: 0.73,
-          supportingEvidence: ["paper-001", "paper-004"],
+          supportingEvidence: [],
           analogousMethods: ["Topological error stabilization decoders", "Chaperone pathway simulation"],
           indirectLinks: [{ source: "Protein A", target: "Protein Folding Landscape", relation: "modulates" }],
           computationalFeasibility: 0.76,
@@ -594,61 +603,62 @@ Respond ONLY with this JSON array.`;
         }
       );
     } else {
+      const displayTopic = query ? query.trim() : "Interdisciplinary Quantum-Physical Modeling";
       survivors.push(
         {
           id: `hypo-tourney-${Date.now()}-0`,
-          title: "Drug Z Downregulation of Gene X via Dual-Action Synaptic Scaffold Locking",
+          title: `Topological State Search Optimization for ${displayTopic}`,
           query,
-          description: "By binding selectively to the primary ligand groove of Protein A, Drug Z locks Protein A into an ultra-stable conformation that physically blocks the kinase docking sites of Gene X. This down-regulates Gene X activity by 75% without toxic side-effects.",
+          description: `By reformulating high-dimensional state exploration for "${displayTopic}" into minimum-weight perfect matching error syndrome decoding, we achieve significant computational acceleration while maintaining structural fidelity.`,
           confidence: 0.88,
-          supportingEvidence: ["paper-001", "paper-002"],
-          analogousMethods: ["Molecular docking conformation locking", "Kinase docking site competition"],
+          supportingEvidence: [],
+          analogousMethods: ["Topological error stabilization decoders", "Graph neural network state mapping"],
           indirectLinks: [
-            { source: "Drug Z", target: "Protein A", relation: "stabilizes" },
-            { source: "Protein A", target: "Gene X", relation: "inhibits" }
+            { source: "Syndrome Decoder", target: "State Space Topology", relation: "optimizes" },
+            { source: "State Space Topology", target: displayTopic, relation: "stabilizes" }
           ],
-          computationalFeasibility: 0.82,
-          clinicalFeasibility: 0.65,
-          noveltyScore: 0.89,
-          impactScore: 0.95,
+          computationalFeasibility: 0.85,
+          clinicalFeasibility: 0.70,
+          noveltyScore: 0.91,
+          impactScore: 0.94,
           status: "draft",
           discoveryPhase: "Hypothesis",
           createdAt: new Date().toISOString()
         },
         {
           id: `hypo-tourney-${Date.now()}-1`,
-          title: "MicroRNA Epigenetic Tuning of the Protein A Scaffolding Cascade",
+          title: `Interdisciplinary Boundary Constraint Stabilization for ${displayTopic}`,
           query,
-          description: "Rather than direct small-molecule stabilization, this hypothesis utilizes synthetic microRNA complexes to selectively degrade transcripts that inhibit Protein A synthesis, raising active synaptic levels and halting Alzheimer's tau phosphorylation pathways.",
-          confidence: 0.74,
-          supportingEvidence: ["paper-001", "paper-002"],
-          analogousMethods: ["MicroRNA epigenetic targeting", "Transcription degradation kinetics"],
+          description: `Applying nanostructured lattice stabilization and active thermal noise feedback mitigates environmental dissipation, increasing structural stability for "${displayTopic}".`,
+          confidence: 0.82,
+          supportingEvidence: [],
+          analogousMethods: ["Interfacial lattice engineering", "Thermodynamic feedback control"],
           indirectLinks: [
-            { source: "Protein A", target: "Gene X", relation: "inhibits" },
-            { source: "Gene X", target: "Alzheimer's Disease", relation: "associated with" }
+            { source: "Lattice Stabilization", target: "Thermal Bath Noise", relation: "inhibits" },
+            { source: "Thermal Bath Noise", target: displayTopic, relation: "disrupts" }
           ],
-          computationalFeasibility: 0.68,
-          clinicalFeasibility: 0.72,
-          noveltyScore: 0.91,
-          impactScore: 0.93,
+          computationalFeasibility: 0.78,
+          clinicalFeasibility: 0.75,
+          noveltyScore: 0.89,
+          impactScore: 0.92,
           status: "draft",
           discoveryPhase: "Hypothesis",
           createdAt: new Date().toISOString()
         },
         {
           id: `hypo-tourney-${Date.now()}-2`,
-          title: "Retrograde Synaptic Reseeding via Drug Z-Chitosan Nanoparticle Aerosols",
+          title: `Graph-Neural Multi-Agent Reseeding Framework for ${displayTopic}`,
           query,
-          description: "We formulate an experimental intranasal delivery system using biocompatible chitosan nanoparticles loaded with Drug Z. This delivery bypasses blood-brain barrier transport limits, allowing direct retrograde delivery to cortical synapses.",
-          confidence: 0.81,
-          supportingEvidence: ["paper-002"],
-          analogousMethods: ["Intranasal nanoparticle aerosolization", "Retrograde neuro-transport kinetics"],
+          description: `We establish an automated multi-agent message passing framework that scans open literature citations to continuously refine boundary parameters and bridge knowledge gaps for "${displayTopic}".`,
+          confidence: 0.86,
+          supportingEvidence: [],
+          analogousMethods: ["Multi-Agent Knowledge Graph Message Passing", "Topological residual shortcuts"],
           indirectLinks: [
-            { source: "Drug Z", target: "Protein A", relation: "stabilizes" },
-            { source: "Alzheimer's Disease", target: "Drug Z", relation: "treated by" }
+            { source: "Citation Graph", target: "Parameter Refinement", relation: "drives" },
+            { source: "Parameter Refinement", target: displayTopic, relation: "validates" }
           ],
-          computationalFeasibility: 0.72,
-          clinicalFeasibility: 0.85,
+          computationalFeasibility: 0.88,
+          clinicalFeasibility: 0.80,
           noveltyScore: 0.93,
           impactScore: 0.96,
           status: "draft",
@@ -685,7 +695,7 @@ router.post("/simulate-experiment", requireAuth, async (req, res) => {
 
   console.log(`Generating Experimental Design for: "${hypo.title}"`);
 
-  const ai = getAiClient();
+  const ai = getAiClient(req);
   if (ai) {
     try {
       const prompt = `You are an AI Experimental Protocol Generator.
@@ -726,21 +736,16 @@ Format your response as a valid JSON object matching this schema:
   }
 
   if (!hypo.experimentProtocol) {
-    const isQuantum = hypo.title.toLowerCase().includes("topological") || hypo.title.toLowerCase().includes("quantum");
-    if (isQuantum) {
-      hypo.experimentProtocol = `1. Initialize a topological surface code syndrome simulator on a 17x17 logical qubit lattice.\n2. Translate amino acid coordinate fields into stabilizer error positions (X and Z syndromic measurements).\n3. Run Minimum-Weight Perfect Matching (MWPM) decoders using PyTorch Geometric to calculate minimum-length folding pathways.\n4. Compare computed coordinates with physical structures in the Protein Data Bank (PDB).`;
-      hypo.requiredDatasets = `Protein Data Bank (PDB) structural archives (specifically 124 representative alpha-helical structures); QASMTopological Syndrome benchmarks (Dataset ID: QEC-2025-v3).`;
-      hypo.expectedOutcomes = `The MWPM algorithm should reach a 94% conformation accuracy overlap with PDB targets, achieving a 1000x reduction in compute-hours compared to classical tensor network algorithms.`;
-      hypo.failureProbability = 0.18;
-      hypo.requiredEquipment = `Quantum stabilizer simulation software, HPC Supercomputing Cluster (minimum 128x NVIDIA H100 GPUs), PyTorch Geometric software suite.`;
-    } else {
-      hypo.experimentProtocol = `1. Culture Human iPSC-derived cortical neurons under controlled incubator parameters (37°C, 5% CO2).\n2. Apply the experimental compound Drug Z at graded concentrations (0.1 nM to 10 µM) over 48 hours.\n3. Conduct high-resolution cryogenic electron microscopy (Cryo-EM) to confirm Drug Z binding inside the Protein A active conformation pocket.\n4. Perform RT-qPCR to measure changes in Gene X mRNA transcription and Western Blot to evaluate tau phosphorylation thresholds.`;
-      hypo.requiredDatasets = `UniProt structural model for Protein A (ID: P15043); Brain-RNA-Seq database (Gene X expression profiles under neuropathological states); PubChem BioAssay record (AID-2025-X).`;
-      hypo.expectedOutcomes = `A minimum 65% reduction in Gene X transcription levels upon 10 nM Drug Z application, with stabilized Protein A maintaining over 88% synaptic spine density in Alzheimer-derived culture cells.`;
-      hypo.failureProbability = 0.28;
-      hypo.requiredEquipment = `Cryogenic Electron Microscope (Cryo-EM), RT-qPCR system, SDS-PAGE Western Blot apparatus, Microfluidic brain-on-a-chip biological assays.`;
-    }
+    const dynamicFallback = buildDynamicFallbackProtocol(hypo, db.papers);
+    hypo.experimentProtocol = dynamicFallback.protocol;
+    hypo.requiredDatasets = dynamicFallback.datasets;
+    hypo.expectedOutcomes = dynamicFallback.outcomes;
+    hypo.failureProbability = dynamicFallback.failureProb;
+    hypo.requiredEquipment = dynamicFallback.equipment;
   }
+
+  // Generate provenance tags based on uploaded papers vs foundation knowledge
+  hypo.provenance = generateProvenanceForHypothesis(hypo, db.papers);
 
   hypo.discoveryPhase = "Replicated";
   hypo.phaseHistory = [
@@ -753,7 +758,214 @@ Format your response as a valid JSON object matching this schema:
   res.json({ success: true, hypothesis: hypo });
 });
 
-// 8. Register outcome feedback
+// Helper functions for dynamic project-specific fallback generation
+function buildDynamicFallbackProtocol(hypo: any, uploadedPapers: any[]) {
+  const paperRefs = uploadedPapers.length > 0 
+    ? uploadedPapers.map(p => `"${p.title}"`).join(", ")
+    : "project literature repository";
+
+  return {
+    protocol: `1. Formulate in-silico baseline simulations derived strictly from "${hypo.title}".\n2. Cross-reference observational target variables against ingested bibliography datasets (${paperRefs}).\n3. Execute controlled validation assays measuring target interaction thresholds for: ${hypo.query || hypo.title}.\n4. Quantify variance and compute statistical confidence bounds.`,
+    datasets: uploadedPapers.length > 0 
+      ? uploadedPapers.map(p => `${p.title} (${p.journal}, ${p.year})`).join("; ")
+      : `Research Corpus Index for "${hypo.title}"`,
+    outcomes: `Quantitative validation threshold exceeding 85% statistical significance for target parameters in ${hypo.title}.`,
+    failureProb: 0.22,
+    equipment: `High-Performance Compute Cluster, Analytical Modeling Suite, Laboratory Measurement Suite.`
+  };
+}
+
+function buildDynamicFallbackImplications(hypo: any, uploadedPapers: any[]) {
+  const paperTitles = uploadedPapers.map(p => p.title);
+  const title = hypo.title;
+  
+  if (uploadedPapers.length > 0) {
+    return [
+      `Validating "${title}" confirms experimental mechanisms highlighted in uploaded literature: "${paperTitles[0]}".`,
+      `Establishes a novel cross-domain bridge between ${hypo.query || title} and ${paperTitles[1] || paperTitles[0]}.`,
+      `Provides actionable experimental targets for grant funding frameworks in ${hypo.domain || 'interdisciplinary sciences'}.`
+    ];
+  } else {
+    return [
+      `If verified, "${title}" establishes a new theoretical model for ${hypo.query || title}.`,
+      `Suggests direct downstream experimental validation pathways in ${hypo.domain || 'active domain'}.`,
+      `Unlocks potential interdisciplinary applications across connected research fields.`
+    ];
+  }
+}
+
+function generateProvenanceForHypothesis(hypo: any, uploadedPapers: any[]) {
+  const provenanceItems: any[] = [];
+  
+  if (uploadedPapers.length > 0) {
+    uploadedPapers.slice(0, 3).forEach((paper, idx) => {
+      provenanceItems.push({
+        section: idx === 0 ? "hypothesis" : idx === 1 ? "implications" : "protocol",
+        paperId: paper.id,
+        paperTitle: paper.title,
+        source: "uploaded",
+        contribution: `Derived from ingested user bibliography paper "${paper.title}" (${paper.authors})`
+      });
+    });
+  } else {
+    provenanceItems.push({
+      section: "hypothesis",
+      paperTitle: "Pre-indexed Foundation Knowledge",
+      source: "foundation_knowledge",
+      contribution: `Formulated from research formulation query "${hypo.query || hypo.title}" without local bibliography`
+    });
+  }
+
+  return provenanceItems;
+}
+
+// 8. Regenerate ONLY Implications Cascade using current project data
+router.post("/regenerate-implications", requireAuth, async (req, res) => {
+  const { hypothesisId, autoDiscoveryEnabled = true } = req.body;
+  if (!hypothesisId) {
+    return res.status(400).json({ error: "hypothesisId is required" });
+  }
+
+  const hypothesesList = [...db.hypotheses];
+  const hypo = hypothesesList.find(h => h.id === hypothesisId);
+  if (!hypo) {
+    return res.status(404).json({ error: "Hypothesis not found" });
+  }
+
+  const ai = getAiClient(req);
+  let implications: string[] = [];
+
+  if (ai) {
+    try {
+      const papersText = db.papers.length > 0
+        ? db.papers.map(p => `- Title: "${p.title}", Authors: ${p.authors}, Abstract: ${p.abstract.slice(0, 200)}`).join("\n")
+        : "No uploaded bibliography papers present.";
+
+      const prompt = `You are a Scientific Reasoning Agent in a Research OS.
+Generate 3-4 precise, logical, project-specific cascading implications ("If this is true, then...") for the hypothesis below.
+Do NOT use generic or unrelated biomedical sample examples unless the hypothesis is specifically about them.
+
+Hypothesis Title: "${hypo.title}"
+Hypothesis Description: "${hypo.description}"
+Domain: "${hypo.domain || 'Interdisciplinary'}"
+
+Uploaded Bibliography Context:
+${papersText}
+
+Return a valid JSON object matching:
+{
+  "implications": [
+    "If this is true, then [project-specific implication 1]",
+    "If this is true, then [project-specific implication 2]",
+    "If this is true, then [project-specific implication 3]"
+  ]
+}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+      });
+
+      const parsed = JSON.parse(response.text || "{}");
+      if (Array.isArray(parsed.implications) && parsed.implications.length > 0) {
+        implications = parsed.implications;
+      }
+    } catch (e) {
+      console.error("Failed to generate implications via Gemini:", e);
+    }
+  }
+
+  if (implications.length === 0) {
+    implications = buildDynamicFallbackImplications(hypo, db.papers);
+  }
+
+  hypo.implications = implications;
+  hypo.provenance = generateProvenanceForHypothesis(hypo, db.papers);
+  db.hypotheses = hypothesesList;
+
+  res.json({
+    success: true,
+    implications: hypo.implications,
+    provenance: hypo.provenance,
+    hypothesis: hypo
+  });
+});
+
+// 9. Regenerate ONLY Experimental Protocol using current project data
+router.post("/regenerate-protocol", requireAuth, async (req, res) => {
+  const { hypothesisId, autoDiscoveryEnabled = true } = req.body;
+  if (!hypothesisId) {
+    return res.status(400).json({ error: "hypothesisId is required" });
+  }
+
+  const hypothesesList = [...db.hypotheses];
+  const hypo = hypothesesList.find(h => h.id === hypothesisId);
+  if (!hypo) {
+    return res.status(404).json({ error: "Hypothesis not found" });
+  }
+
+  const ai = getAiClient(req);
+  if (ai) {
+    try {
+      const papersText = db.papers.length > 0
+        ? db.papers.map(p => `- "${p.title}"`).join("\n")
+        : "No uploaded bibliography.";
+
+      const prompt = `You are an AI Experimental Protocol Generator.
+Design a project-specific experimental design to test this hypothesis:
+Title: "${hypo.title}"
+Description: "${hypo.description}"
+Uploaded Bibliography:
+${papersText}
+
+Return valid JSON:
+{
+  "experimentProtocol": "Step-by-step numbered protocol (1, 2, 3...) based strictly on this project and uploaded papers",
+  "requiredDatasets": "Specific datasets required for this project",
+  "expectedOutcomes": "Quantitative expected outcomes confirming or rejecting this hypothesis",
+  "failureProbability": number,
+  "requiredEquipment": "Equipment required for this specific experiment"
+}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+      });
+
+      const parsed = JSON.parse(response.text || "{}");
+      if (parsed.experimentProtocol) {
+        hypo.experimentProtocol = parsed.experimentProtocol;
+        hypo.requiredDatasets = parsed.requiredDatasets || hypo.requiredDatasets;
+        hypo.expectedOutcomes = parsed.expectedOutcomes || hypo.expectedOutcomes;
+        hypo.failureProbability = parsed.failureProbability || 0.20;
+        hypo.requiredEquipment = parsed.requiredEquipment || hypo.requiredEquipment;
+      }
+    } catch (e) {
+      console.error("Gemini protocol regeneration error:", e);
+    }
+  }
+
+  if (!hypo.experimentProtocol) {
+    const fallback = buildDynamicFallbackProtocol(hypo, db.papers);
+    hypo.experimentProtocol = fallback.protocol;
+    hypo.requiredDatasets = fallback.datasets;
+    hypo.expectedOutcomes = fallback.outcomes;
+    hypo.failureProbability = fallback.failureProb;
+    hypo.requiredEquipment = fallback.equipment;
+  }
+
+  hypo.provenance = generateProvenanceForHypothesis(hypo, db.papers);
+  db.hypotheses = hypothesesList;
+
+  res.json({
+    success: true,
+    hypothesis: hypo
+  });
+});
+
+// 10. Register outcome feedback
 router.post("/:id/feedback", requireAuth, (req, res) => {
   const { id } = req.params;
   const { status, notes } = req.body;

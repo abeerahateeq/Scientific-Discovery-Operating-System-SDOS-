@@ -12,7 +12,10 @@ import {
   Terminal, 
   AlertTriangle,
   ChevronRight,
-  BookOpen
+  BookOpen,
+  Trash2,
+  Search,
+  X
 } from "lucide-react";
 
 interface LiteratureIngestProps {
@@ -26,15 +29,26 @@ interface LiteratureIngestProps {
   }) => Promise<void>;
   isIngesting: boolean;
   onUploadSuccess?: () => Promise<void>;
+  onDeletePaper?: (paperId: string) => Promise<void>;
+  onClearAllPapers?: () => Promise<void>;
 }
 
 export default function LiteratureIngest({
   papers,
   onIngest,
   isIngesting,
-  onUploadSuccess
+  onUploadSuccess,
+  onDeletePaper,
+  onClearAllPapers
 }: LiteratureIngestProps) {
   const [ingestMode, setIngestMode] = useState<"pdf" | "manual" | "csv">("pdf");
+  
+  // Literature Repository Search & Deletion State
+  const [repoSearchQuery, setRepoSearchQuery] = useState("");
+  const [paperToDeleteConfirm, setPaperToDeleteConfirm] = useState<ScientificPaper | null>(null);
+  const [showConfirmClearAll, setShowConfirmClearAll] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isClearingAll, setIsClearingAll] = useState(false);
   
   // Manual Ingest State
   const [title, setTitle] = useState("");
@@ -84,6 +98,7 @@ export default function LiteratureIngest({
   const [uploadLogs, setUploadLogs] = useState<string[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [newlyUploadedId, setNewlyUploadedId] = useState<string | null>(null);
 
   // Bulk CSV Import State
   interface CsvRecord {
@@ -146,11 +161,26 @@ export default function LiteratureIngest({
       return;
     }
 
+    // Reset DOM file input element value to clear browser file buffer reference
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
     setIsUploading(true);
     setErrorMsg("");
     setSuccessMsg("");
+    
+    // Clear manual form draft and local storage to prevent cross-document contamination
+    setTitle("");
+    setAuthors("");
+    setJournal("");
+    setYear(new Date().getFullYear().toString());
+    setAbstract("");
+    setHasRestoredDraft(false);
+    localStorage.removeItem("sdos_lit_ingest_autosave");
+
     setUploadLogs([
-      "Initializing secure file ingest buffer...",
+      "Resetting initial file ingestion buffer for new document processing...",
       "Connecting to PDF Parser pipeline (PyMuPDF / GROBID core emulate)..."
     ]);
 
@@ -176,7 +206,19 @@ export default function LiteratureIngest({
       }
 
       setSuccessMsg(`"${data.paper.title}" successfully ingested and extracted.`);
+      if (data.paper && data.paper.id) {
+        setNewlyUploadedId(data.paper.id);
+      }
       
+      // Clear manual form draft so user isn't confused by old form inputs
+      setTitle("");
+      setAuthors("");
+      setJournal("");
+      setYear(new Date().getFullYear().toString());
+      setAbstract("");
+      setHasRestoredDraft(false);
+      localStorage.removeItem("sdos_lit_ingest_autosave");
+
       if (onUploadSuccess) {
         await onUploadSuccess();
       }
@@ -251,8 +293,12 @@ export default function LiteratureIngest({
 
   const handleCsvFileUpload = async (file: File) => {
     if (!file) return;
+    if (csvFileInputRef.current) {
+      csvFileInputRef.current.value = "";
+    }
     setErrorMsg("");
     setSuccessMsg("");
+    setCsvRecords([]); // Reset batch record buffer for new upload session
     
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -760,79 +806,291 @@ export default function LiteratureIngest({
             <BookOpen className="text-slate-400 w-4 h-4" />
             <h2 className="text-slate-200 font-bold uppercase tracking-wider text-[11px]">Indexed Research Repository</h2>
           </div>
-          <span className="bg-[#07080A] border border-slate-800 text-slate-400 font-mono text-[9px] px-1.5 py-0.2 rounded uppercase">
-            {papers.length} Records
-          </span>
+          <div className="flex items-center gap-2">
+            {papers.length > 0 && onClearAllPapers && (
+              <button
+                type="button"
+                onClick={() => setShowConfirmClearAll(true)}
+                className="text-[9px] font-mono font-bold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 rounded uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer"
+                title="Remove all uploaded literature from repository"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Clear All ({papers.length})</span>
+              </button>
+            )}
+            <span className="bg-[#07080A] border border-slate-800 text-slate-400 font-mono text-[9px] px-1.5 py-0.2 rounded uppercase">
+              {papers.length} Records
+            </span>
+          </div>
         </div>
+
+        {/* Filter / Search input for repository */}
+        {papers.length > 0 && (
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
+            <input
+              type="text"
+              placeholder="Search uploaded papers by title, author, or keyword..."
+              value={repoSearchQuery}
+              onChange={(e) => setRepoSearchQuery(e.target.value)}
+              className="w-full bg-[#07080A] border border-slate-800 rounded pl-8 pr-7 py-1.5 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500/50 font-sans"
+            />
+            {repoSearchQuery && (
+              <button
+                onClick={() => setRepoSearchQuery("")}
+                className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300 cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Paper Cards List */}
         <div className="flex flex-col gap-3 overflow-y-auto pr-1">
-          {papers.map((paper) => (
-            <div
-              key={paper.id}
-              className="bg-[#07080A] hover:bg-[#16181D] border border-slate-800/80 rounded p-3 transition-all flex flex-col gap-2.5 group"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-col gap-0.5">
-                  <h3 className="text-slate-200 font-bold text-[11px] group-hover:text-emerald-400 transition-colors font-sans leading-snug">
-                    {paper.title}
-                  </h3>
-                  <p className="text-[10px] text-slate-500 font-sans">
-                    {paper.authors} &bull; <span className="italic">{paper.journal}</span> ({paper.year})
-                  </p>
-                </div>
-                {paper.status === "analyzed" ? (
-                  <span className="flex items-center gap-1 text-[8px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded shrink-0 uppercase">
-                    <CheckCircle className="w-2.5 h-2.5" />
-                    Indexed
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-[8px] font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1 py-0.2 rounded shrink-0 uppercase animate-pulse">
-                    <Clock className="w-2.5 h-2.5" />
-                    Analyzing
-                  </span>
-                )}
-              </div>
-
-              <p className="text-[10px] text-slate-400 leading-relaxed font-sans line-clamp-2">
-                {paper.abstract}
+          {papers.filter((p) => {
+            if (!repoSearchQuery.trim()) return true;
+            const q = repoSearchQuery.toLowerCase();
+            return (
+              p.title.toLowerCase().includes(q) ||
+              (p.authors && p.authors.toLowerCase().includes(q)) ||
+              (p.journal && p.journal.toLowerCase().includes(q)) ||
+              (p.abstract && p.abstract.toLowerCase().includes(q))
+            );
+          }).length === 0 ? (
+            <div className="p-8 text-center border border-dashed border-slate-800/80 rounded-lg bg-[#07080A] flex flex-col items-center justify-center gap-2 text-slate-500">
+              <BookOpen className="w-8 h-8 text-slate-600 mb-1" />
+              <p className="text-xs font-semibold text-slate-400 font-sans">
+                {repoSearchQuery ? `No papers match "${repoSearchQuery}"` : "No papers in research repository"}
               </p>
+              <p className="text-[10px] font-sans max-w-sm">
+                Upload PDFs, enter manual abstracts, or import CSV datasets using the controls on the left to index literature.
+              </p>
+            </div>
+          ) : (
+            [...papers].sort((a, b) => {
+              if (a.id === newlyUploadedId) return -1;
+              if (b.id === newlyUploadedId) return 1;
+              return new Date(b.ingestedDate || 0).getTime() - new Date(a.ingestedDate || 0).getTime();
+            }).filter((p) => {
+              if (!repoSearchQuery.trim()) return true;
+              const q = repoSearchQuery.toLowerCase();
+              return (
+                p.title.toLowerCase().includes(q) ||
+                (p.authors && p.authors.toLowerCase().includes(q)) ||
+                (p.journal && p.journal.toLowerCase().includes(q)) ||
+                (p.abstract && p.abstract.toLowerCase().includes(q))
+              );
+            }).map((paper) => (
+              <div
+                key={paper.id}
+                className={paper.id === newlyUploadedId 
+                  ? "bg-[#0B1713] border-2 border-emerald-500/80 rounded p-3 transition-all flex flex-col gap-2.5 group relative shadow-lg shadow-emerald-950/50" 
+                  : "bg-[#07080A] hover:bg-[#16181D] border border-slate-800/80 rounded p-3 transition-all flex flex-col gap-2.5 group relative"}
+              >
+                {paper.id === newlyUploadedId && (
+                  <div className="flex items-center justify-between bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[9px] font-mono font-bold px-2 py-0.5 rounded -mt-0.5 mb-1 uppercase tracking-wider">
+                    <span>Active Ingested Document (Uploaded)</span>
+                    <span>Just Uploaded</span>
+                  </div>
+                )}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-0.5 flex-1">
+                    <h3 className="text-slate-200 font-bold text-[11px] group-hover:text-emerald-400 transition-colors font-sans leading-snug">
+                      {paper.title}
+                    </h3>
+                    <p className="text-[10px] text-slate-500 font-sans">
+                      {paper.authors} &bull; <span className="italic">{paper.journal}</span> ({paper.year})
+                    </p>
+                  </div>
 
-              {/* References citations parsed list */}
-              {paper.references && paper.references.length > 0 && (
-                <div className="flex flex-col gap-1 border-t border-slate-800/60 pt-2 font-mono text-[9px] text-slate-500">
-                  <span className="uppercase font-bold tracking-wide text-slate-600 mb-0.5">Parsed References ({paper.references.length}):</span>
-                  <div className="max-h-[80px] overflow-y-auto flex flex-col gap-1 pr-1 font-sans">
-                    {paper.references.map((ref, idx) => (
-                      <div key={idx} className="flex gap-1 items-start text-slate-400">
-                        <span className="text-slate-600">[{idx + 1}]</span>
-                        <span>
-                          <span className="font-semibold text-slate-300">"{ref.title}"</span> &bull; {ref.authors} ({ref.year || "unknown"})
-                        </span>
-                      </div>
-                    ))}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {paper.status === "analyzed" ? (
+                      <span className="flex items-center gap-1 text-[8px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded uppercase">
+                        <CheckCircle className="w-2.5 h-2.5" />
+                        Indexed
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[8px] font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1 py-0.2 rounded uppercase animate-pulse">
+                        <Clock className="w-2.5 h-2.5" />
+                        Analyzing
+                      </span>
+                    )}
+
+                    {onDeletePaper && (
+                      <button
+                        type="button"
+                        onClick={() => setPaperToDeleteConfirm(paper)}
+                        disabled={deletingId === paper.id}
+                        className="p-1 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 rounded transition-all cursor-pointer"
+                        title="Delete this paper"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
-              )}
 
-              {/* Extracted Entities Badges */}
-              {paper.entitiesExtracted && paper.entitiesExtracted.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1 border-t border-slate-800/60 pt-2">
-                  <span className="text-[9px] font-mono text-slate-600 uppercase tracking-wider mr-1">Extracted Entities:</span>
-                  {paper.entitiesExtracted.map((ent, idx) => (
-                    <span
-                      key={idx}
-                      className="text-[9px] font-mono text-slate-300 bg-[#16181D] border border-slate-800 px-1.5 py-0.2 rounded"
-                    >
-                      {ent}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+                <p className="text-[10px] text-slate-400 leading-relaxed font-sans line-clamp-2">
+                  {paper.abstract}
+                </p>
+
+                {/* References citations parsed list */}
+                {paper.references && paper.references.length > 0 && (
+                  <div className="flex flex-col gap-1 border-t border-slate-800/60 pt-2 font-mono text-[9px] text-slate-500">
+                    <span className="uppercase font-bold tracking-wide text-slate-600 mb-0.5">Parsed References ({paper.references.length}):</span>
+                    <div className="max-h-[80px] overflow-y-auto flex flex-col gap-1 pr-1 font-sans">
+                      {paper.references.map((ref, idx) => (
+                        <div key={idx} className="flex gap-1 items-start text-slate-400">
+                          <span className="text-slate-600">[{idx + 1}]</span>
+                          <span>
+                            <span className="font-semibold text-slate-300">"{ref.title}"</span> &bull; {ref.authors} ({ref.year || "unknown"})
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Extracted Entities Badges */}
+                {paper.entitiesExtracted && paper.entitiesExtracted.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1 border-t border-slate-800/60 pt-2">
+                    <span className="text-[9px] font-mono text-slate-600 uppercase tracking-wider mr-1">Extracted Entities:</span>
+                    {paper.entitiesExtracted.map((ent, idx) => (
+                      <span
+                        key={idx}
+                        className="text-[9px] font-mono text-slate-300 bg-[#16181D] border border-slate-800 px-1.5 py-0.2 rounded"
+                      >
+                        {ent}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </div>
       </div>
+
+      {/* Confirmation Modal: Delete Single Paper */}
+      {paperToDeleteConfirm && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-[#0F1115] border border-rose-500/40 rounded-xl p-5 max-w-md w-full shadow-2xl flex flex-col gap-4">
+            <div className="flex items-center gap-3 text-rose-400 border-b border-slate-800 pb-3">
+              <div className="p-2 bg-rose-500/10 border border-rose-500/30 rounded-lg">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-slate-200">Confirm Literature Deletion</h3>
+                <p className="text-[10px] font-mono text-slate-500 uppercase">PERMANENT ACTION</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 font-sans leading-relaxed">
+              Are you sure you want to remove <strong className="text-white">"{paperToDeleteConfirm.title}"</strong> from your Indexed Research Repository?
+            </p>
+
+            <div className="flex justify-end items-center gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setPaperToDeleteConfirm(null)}
+                className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!onDeletePaper || !paperToDeleteConfirm) return;
+                  setDeletingId(paperToDeleteConfirm.id);
+                  try {
+                    await onDeletePaper(paperToDeleteConfirm.id);
+                  } catch (e) {
+                    console.error("Delete paper error:", e);
+                  } finally {
+                    setDeletingId(null);
+                    setPaperToDeleteConfirm(null);
+                  }
+                }}
+                disabled={deletingId === paperToDeleteConfirm.id}
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-md shadow-rose-950 cursor-pointer flex items-center gap-1.5"
+              >
+                {deletingId === paperToDeleteConfirm.id ? (
+                  <>
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3 h-3" />
+                    Delete Paper
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal: Clear All Papers */}
+      {showConfirmClearAll && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-[#0F1115] border border-rose-500/40 rounded-xl p-5 max-w-md w-full shadow-2xl flex flex-col gap-4">
+            <div className="flex items-center gap-3 text-rose-400 border-b border-slate-800 pb-3">
+              <div className="p-2 bg-rose-500/10 border border-rose-500/30 rounded-lg">
+                <AlertTriangle className="w-5 h-5 text-rose-400" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-slate-200">Clear Entire Repository</h3>
+                <p className="text-[10px] font-mono text-slate-500 uppercase">PERMANENT ACTION</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 font-sans leading-relaxed">
+              Are you sure you want to delete all <strong className="text-white">{papers.length} literature records</strong>? This will clear all uploaded papers and extracted bibliography metadata from your workspace index.
+            </p>
+
+            <div className="flex justify-end items-center gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowConfirmClearAll(false)}
+                className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:text-white text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!onClearAllPapers) return;
+                  setIsClearingAll(true);
+                  try {
+                    await onClearAllPapers();
+                  } catch (e) {
+                    console.error("Clear all papers error:", e);
+                  } finally {
+                    setIsClearingAll(false);
+                    setShowConfirmClearAll(false);
+                  }
+                }}
+                disabled={isClearingAll}
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all shadow-md shadow-rose-950 cursor-pointer flex items-center gap-1.5"
+              >
+                {isClearingAll ? (
+                  <>
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Clearing Repository...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3 h-3" />
+                    Clear All Papers
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
