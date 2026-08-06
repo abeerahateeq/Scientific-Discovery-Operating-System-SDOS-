@@ -146,7 +146,9 @@ export default function ResearchOSWorkspace({ hypotheses, papers = [], onSelectH
       let invName = "NSF Awards";
       let invCode = "NSF-QBIO-2026";
       let invBudget = "$1,800,000";
-      let invFocus = "Quantum-Enhanced Biomolecular Modeling and Physical State Landscapes";
+      let invFocus = selectedHypo?.domain 
+        ? `${selectedHypo.domain} Innovation & Methodological Validation` 
+        : "Cross-Disciplinary Scientific Innovation & Empirical Validation";
 
       if (selectedFunderMode === "grant-nih-01") {
         invName = "NIH RePORTER";

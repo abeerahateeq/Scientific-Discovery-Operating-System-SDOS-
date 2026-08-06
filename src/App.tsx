@@ -64,6 +64,7 @@ import {
   Sun,
   Terminal,
   Download,
+  Copy,
   Search,
   SlidersHorizontal,
   ArrowUpDown,

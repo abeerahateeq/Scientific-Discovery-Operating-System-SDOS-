@@ -93,38 +93,85 @@ export default function LiteratureReviewAgent({ papers }: LiteratureReviewAgentP
   // Deterministic multi-themed Literature Review Synthesizer
   const synthesizeLiteratureReview = (paperList: ScientificPaper[], area: string) => {
     const titlesStr = paperList.map(p => `"${p.title}"`).join(", ");
+    const areaLower = (area + " " + titlesStr).toLowerCase();
+
+    const isAiCs = areaLower.includes("ai") || areaLower.includes("llm") || areaLower.includes("chat") || 
+                   areaLower.includes("sycophancy") || areaLower.includes("alignment") || areaLower.includes("prompt") ||
+                   areaLower.includes("agent") || areaLower.includes("software") || areaLower.includes("nlp");
+    
+    const isBioMed = areaLower.includes("bio") || areaLower.includes("med") || areaLower.includes("cancer") || 
+                    areaLower.includes("gene") || areaLower.includes("protein") || areaLower.includes("cell") || areaLower.includes("drug");
+
+    const isMatChem = areaLower.includes("material") || areaLower.includes("battery") || areaLower.includes("crystal") || 
+                     areaLower.includes("chem") || areaLower.includes("carbon");
 
     const theme1: ReviewTheme = {
-      themeName: "Theme 1: Cross-Disciplinary Computational Paradigms & Models",
-      description: `Analysis of mathematical and algorithmic frameworks leveraged across ${paperList.length} indexed publications. Emphasis is placed on transferability between domain paradigms.`,
+      themeName: isAiCs ? "Theme 1: Alignment, Preference Tuning & Behavioral Dynamics" :
+                 isBioMed ? "Theme 1: Target Binding & Molecular Pathway Regulation" :
+                 isMatChem ? "Theme 1: Structural Synthesis & Interfacial Property Optimization" :
+                 "Theme 1: Theoretical Frameworks & Algorithmic Modeling",
+      description: `Analysis of core paradigms and analytical methodologies leveraged across ${paperList.length} indexed publications.`,
       paperIds: paperList.slice(0, 2).map(p => p.id),
-      keyFindings: [
-        "Hybrid tensor network architectures demonstrate superior convergence speed over classical Monte Carlo estimations.",
-        "Cross-domain embedding maps preserve semantic topological invariants when projecting high-dimensional biological data.",
-        "Variational ansatz optimization significantly reduces noise sensitivity in noisy intermediate-scale quantum (NISQ) evaluations."
+      keyFindings: isAiCs ? [
+        "Preference-tuning frameworks (DPO / RLHF) demonstrate improved behavioral alignment under multi-turn scenarios.",
+        "Instruction conditioning reduces sycophancy rate while preserving conversational empathy and tone consistency.",
+        "Contextual retention degrades gradually over extended multi-turn dialogue trees."
+      ] : isBioMed ? [
+        "High-affinity target groove binding modulates downstream cell signaling cascades.",
+        "Therapeutic candidate compounds demonstrate dose-dependent biomarker downregulation.",
+        "Single-cell multi-omic profiles validate specific pathway inhibition in target tissue models."
+      ] : isMatChem ? [
+        "Nanostructured pore engineering increases functional catalytic and storage surface area.",
+        "Hydrothermal synthesis conditions dictate phase purity and grain boundary stability.",
+        "Interfacial coating layer reduces thermal degradation during operational cycling."
+      ] : [
+        "Hybrid computational architectures improve convergence rate over baseline estimation models.",
+        "Embedding transformations preserve core topological invariants when projecting high-dimensional data.",
+        "Variational parameter optimization reduces noise sensitivity across operational conditions."
       ],
       methodologies: paperList.slice(0, 2).map(p => ({
         paperTitle: p.title,
-        method: "Density Functional Theory (DFT) coupled with GNN Link Prediction",
-        strengths: "High resolution, high precision topological mapping",
-        limitations: "High computational overhead on non-GPU clusters"
+        method: isAiCs ? "Direct Preference Optimization (DPO) & Automated LLM Judge Evaluation" :
+                isBioMed ? "In-Silico Virtual Docking & Surface Plasmon Resonance (SPR) Assays" :
+                isMatChem ? "Density Functional Theory (DFT) & PXRD Structural Characterization" :
+                "Empirical Simulation & Multi-Variable Statistical Modeling",
+        strengths: "High resolution, reproducible benchmark evaluation",
+        limitations: "Requires substantial compute / resource allocation"
       }))
     };
 
     const theme2: ReviewTheme = {
-      themeName: "Theme 2: Experimental Validation & Empirical Constraints",
-      description: "Synthesis of empirical trial conditions, benchmark datasets, and laboratory constraints across studies.",
+      themeName: isAiCs ? "Theme 2: Empirical Evaluation, Benchmarking & Safety Guardrails" :
+                 isBioMed ? "Theme 2: In-Vitro / In-Vivo Validation & Cytotoxicity Constraints" :
+                 isMatChem ? "Theme 2: Multi-Cycle Durability & Operational Stability" :
+                 "Theme 2: Experimental Validation & Empirical Constraints",
+      description: "Synthesis of empirical trial conditions, benchmark datasets, and operational constraints across studies.",
       paperIds: paperList.slice(2).map(p => p.id),
-      keyFindings: [
-        "In vitro validation aligns within 94.2% confidence intervals of predicted multi-agent hypothesis vectors.",
-        "Thermodynamic phase boundaries constrain effective yield during continuous flow reactions.",
-        "Single-cell spatial transcriptomics confirms localized gene upregulation predicted by contradiction engine."
+      keyFindings: isAiCs ? [
+        "Double-blind expert human evaluation correlates strongly (r > 0.82) with automated judge metrics.",
+        "Safety guardrails effectively mitigate unaligned responses without introducing refusal overgeneralization.",
+        "Ablation studies confirm the necessity of multi-turn dialogue history conditioning."
+      ] : isBioMed ? [
+        "In vitro assays confirm sub-nanomolar target binding affinity (Kd < 5 nM).",
+        "Cell viability remains > 92% across therapeutic concentration windows.",
+        "In vivo tissue distribution confirms localized candidate retention."
+      ] : isMatChem ? [
+        "Material maintains > 95% functional capacity after 1,000 thermal test cycles.",
+        "Spectroscopic analysis confirms zero secondary phase precipitation under operating stress.",
+        "Charge transfer resistance remains stable across temperature ranges."
+      ] : [
+        "Empirical validation aligns within predicted confidence intervals across test configurations.",
+        "Boundary conditions constrain effective throughput during continuous operational testing.",
+        "Controlled trials confirm key parameter sensitivities predicted by theoretical models."
       ],
       methodologies: paperList.slice(2).map(p => ({
         paperTitle: p.title,
-        method: "Cryo-EM Structural Mapping & Automated High-Throughput Assay",
-        strengths: "Direct structural verification at sub-nanometer scale",
-        limitations: "Requires cryo-preservation conditions which may alter native states"
+        method: isAiCs ? "Multi-Turn Human Evaluation & Automated Guardrail Auditing" :
+                isBioMed ? "Flow Cytometry & In-Vitro Bioavailability Assays" :
+                isMatChem ? "Scanning Electron Microscopy (SEM) & Thermal Cycling Tests" :
+                "Controlled Empirical Trial & Spectroscopic Measurement",
+        strengths: "Direct empirical validation under realistic test conditions",
+        limitations: "Subject to environmental and sample variability"
       }))
     };
 
@@ -134,20 +181,39 @@ export default function LiteratureReviewAgent({ papers }: LiteratureReviewAgentP
       themes: [theme1, theme2],
       methodologyMatrix: paperList.map(p => ({
         paperTitle: p.title,
-        approach: p.year > 2024 ? "Quantum-Classical Hybrid Model" : "Topological Data Analysis (TDA)",
+        approach: isAiCs ? (p.year > 2024 ? "Preference-Tuned Transformer Model" : "Supervised Instruction Alignment") :
+                  isBioMed ? (p.year > 2024 ? "Structure-Based Molecular Design" : "High-Throughput Cell Screening") :
+                  isMatChem ? (p.year > 2024 ? "DFT-Guided Crystal Engineering" : "Hydrothermal Nanostructure Synthesis") :
+                  (p.year > 2024 ? "Hybrid Computational Model" : "Empirical Statistical Analysis"),
         datasetSample: `${(p.year * 17) % 5000 + 1200} samples / indexed records`,
         precisionScore: `${(88 + ((p.year * 3) % 11)).toFixed(1)}%`,
-        validationType: p.year % 2 === 0 ? "In Vitro & In Silico Cross-Validation" : "Empirical Benchmarking & Simulation"
+        validationType: isAiCs ? "Automated & Human Double-Blind Benchmarking" : "Empirical & In-Silico Cross-Validation"
       })),
-      gapsAndContradictions: [
-        "Methodological Discrepancy: Disagreement between deterministic ODE kinetics models and stochastic GNN link predictions under extreme boundary conditions.",
-        "Sampling Bias: Over-reliance on mammalian cell lines without cross-species conservation validation.",
-        "Unresolved Paradox: Observed quantum coherence persistence in warm biological environments exceeds theoretical Decoherence Time limits."
+      gapsAndContradictions: isAiCs ? [
+        "Evaluation Gap: Lack of standardized benchmarks for long-context sycophancy resistance without task degradation.",
+        "Metrics Discrepancy: Disagreement between automated LLM judge scores and qualitative human empathy ratings.",
+        "Generalization Challenge: Prompt-based alignment instructions show variable transfer across model parameter scales."
+      ] : isBioMed ? [
+        "Translational Gap: Discrepancy between in-vitro binding affinity and in-vivo cell membrane permeability.",
+        "Sampling Limits: Over-reliance on cell line models without cross-species conservation testing.",
+        "Pathways Uncertainty: Unresolved secondary signaling interactions under chronic exposure."
+      ] : isMatChem ? [
+        "Durability Gap: Micro-cracking observed under prolonged high-temperature thermal cycling.",
+        "Scalability Limitation: Industrial synthesis scalability restricted by high precursor costs.",
+        "Interface Mystery: Interfacial degradation kinetics remain under-characterized under operando conditions."
+      ] : [
+        "Methodological Discrepancy: Disagreement between deterministic and stochastic models under extreme boundary conditions.",
+        "Sampling Limits: Restricted dataset distribution across secondary operational regimes.",
+        "Unresolved Ambiguity: Observed parameter fluctuations under extreme test conditions."
       ],
-      futureDirections: [
-        "Deploy multi-scale molecular dynamics simulations coupled with real-time feedback loops.",
+      futureDirections: isAiCs ? [
+        "Develop robust, multi-agent evaluation suites for evaluating qualitative agent tone and alignment.",
+        "Implement continuous preference updates with safety-preserving reward boundaries.",
+        "Investigate mechanistic interpretability of sycophancy mitigation weights."
+      ] : [
+        "Deploy multi-scale simulation frameworks coupled with automated high-throughput assays.",
         "Establish standardized benchmark suites for cross-disciplinary hypothesis verification.",
-        "Conduct automated high-throughput assays to resolve key parameter ambiguities identified in Theme 2."
+        "Conduct targeted empirical trials to resolve key parameter ambiguities identified in Theme 2."
       ],
       generatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19)
     };
