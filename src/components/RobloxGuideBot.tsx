@@ -26,15 +26,30 @@ import {
   Play,
   Calculator,
   RotateCcw,
-  FileText
+  FileText,
+  Paperclip,
+  Upload,
+  FileSpreadsheet,
+  FileCode,
+  Copy,
+  CheckCircle,
+  BarChart2,
+  FileUp,
+  Download,
+  Trash2,
+  GraduationCap
 } from 'lucide-react';
 import { UserProfile } from '../lib/firebase';
+import { ScientificPaper, Hypothesis, SpssAnalysisPackage } from '../types';
 
 interface RobloxGuideBotProps {
   currentTab: string;
   onNavigateTab?: (tab: any) => void;
   userProfile?: UserProfile | null;
   onTriggerNotification?: (title: string, message: string, type?: any) => void;
+  papers?: ScientificPaper[];
+  onHypothesisGenerated?: (hypo: Hypothesis) => void;
+  onApplySpssAnalysis?: (pkg: SpssAnalysisPackage) => void;
 }
 
 interface ChatMessage {
@@ -45,20 +60,28 @@ interface ChatMessage {
   canNotifyTeam?: boolean;
   isResearchResult?: boolean;
   actionPayload?: any;
+  attachedDocName?: string;
+  operationType?: string;
+  spssPackage?: any;
+  hypothesis?: any;
+  extractedEntities?: any[];
 }
 
 export default function RobloxGuideBot({
   currentTab,
   onNavigateTab,
   userProfile,
-  onTriggerNotification
+  onTriggerNotification,
+  papers = [],
+  onHypothesisGenerated,
+  onApplySpssAnalysis
 }: RobloxGuideBotProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome_msg',
       sender: 'bloxbot',
-      text: "👋 Bleep Bloop! Welcome to Synapse OS! I am **BloxBot**, your gamified Roblox research assistant (LVL 99).\n\n🎙️ **Voice Option Active!** You can speak to me with the mic button, listen to voice answers, or ask me to **automatically perform research & SPSS analysis** on your documents! 🚀",
+      text: "👋 Bleep Bloop! Welcome to Synapse OS! I am **BloxBot**, your gamified Roblox research assistant (LVL 99).\n\n📄 **Document Ingestion Ready!** Click the 📎 **Attach Document** button to upload any research PDF, Word (.docx), CSV, or text file. Select an operation or type custom commands to run **SPSS Statistics, Hypothesis Formulations, Executive Summaries, or Knowledge Graph extractions**! 🚀",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       canNotifyTeam: true
     }
@@ -66,6 +89,18 @@ export default function RobloxGuideBot({
   const [inputQuery, setInputQuery] = useState('');
   const [loading, setLoading] = useState(false);
   
+  // Document Attachment State
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [attachedDocMeta, setAttachedDocMeta] = useState<{ name: string; size: string; type: string } | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [selectedOperation, setSelectedOperation] = useState<string>('spss_analysis');
+  const [showOperationPicker, setShowOperationPicker] = useState(false);
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
+  const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
+
+  // File Upload Reference
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Voice Input (Speech Recognition) State
   const [isListening, setIsListening] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true); // TTS Voice Narration
@@ -130,9 +165,8 @@ export default function RobloxGuideBot({
     if (!voiceEnabled || !('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel(); // Stop prior speech
     
-    // Clean markdown symbols for natural narration
     const cleanSpeech = text
-      .replace(/[*_#`~]/g, '')
+      .replace(/[*_#`~$\\]/g, '')
       .replace(/https?:\/\/\S+/g, 'link')
       .slice(0, 350);
 
@@ -161,9 +195,152 @@ export default function RobloxGuideBot({
     }
   };
 
+  // Handle File Selection
+  const handleFileSelect = (file: File) => {
+    if (!file) return;
+    setAttachedFile(file);
+    const sizeKb = (file.size / 1024).toFixed(1);
+    const sizeMb = (file.size / 1024 / 1024).toFixed(2);
+    const sizeStr = file.size > 1024 * 1024 ? `${sizeMb} MB` : `${sizeKb} KB`;
+    
+    let typeLabel = "Document";
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    if (ext === 'pdf') typeLabel = 'PDF';
+    else if (ext === 'docx' || ext === 'doc') typeLabel = 'Word DOCX';
+    else if (ext === 'csv' || ext === 'tsv') typeLabel = 'Dataset (CSV)';
+    else if (ext === 'txt' || ext === 'md' || ext === 'json') typeLabel = ext.toUpperCase();
+
+    setAttachedDocMeta({
+      name: file.name,
+      size: sizeStr,
+      type: typeLabel
+    });
+    setShowOperationPicker(true);
+    speakText(`Document ${file.name} attached! Select an operation or type your request.`);
+  };
+
+  // Remove Attached File
+  const handleRemoveFile = () => {
+    setAttachedFile(null);
+    setAttachedDocMeta(null);
+    setShowOperationPicker(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Process Document with Selected Operation
+  const handleExecuteDocOperation = async (operationKey: string, customPrompt?: string) => {
+    if (!attachedFile && !inputQuery.trim()) return;
+
+    setIsAutoResearching(true);
+    setEmotion('thinking');
+    setShowOperationPicker(false);
+
+    const fileToProcess = attachedFile;
+    const promptToSend = customPrompt !== undefined ? customPrompt : inputQuery;
+    const docName = fileToProcess ? fileToProcess.name : "Active Ingested Context";
+    const opDisplay = operationKey.replace(/_/g, ' ').toUpperCase();
+
+    // Add user message
+    const userMsgText = fileToProcess
+      ? `📄 **Attached Document:** \`${fileToProcess.name}\` (${attachedDocMeta?.size || 'Attached'})\n⚡ **Requested BloxBot Operation:** \`${opDisplay}\`${promptToSend ? `\n💬 **Instruction:** "${promptToSend}"` : ''}`
+      : `⚡ **Requested BloxBot Operation on Literature:** \`${opDisplay}\`\n💬 **Instruction:** "${promptToSend}"`;
+
+    const userMsg: ChatMessage = {
+      id: `usr_doc_${Date.now()}`,
+      sender: 'user',
+      text: userMsgText,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      attachedDocName: fileToProcess?.name,
+      operationType: operationKey
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    setInputQuery('');
+    setAttachedFile(null);
+    setAttachedDocMeta(null);
+
+    setResearchProgressStep(`Step 1: Ingesting "${docName}" buffer and mapping variables...`);
+    await new Promise(r => setTimeout(r, 450));
+
+    setResearchProgressStep(`Step 2: Executing ${opDisplay} multi-agent reasoning engine...`);
+    await new Promise(r => setTimeout(r, 450));
+
+    try {
+      const formData = new FormData();
+      if (fileToProcess) {
+        formData.append("document", fileToProcess);
+      }
+      formData.append("operation", operationKey);
+      formData.append("userPrompt", promptToSend);
+
+      const res = await fetch("/api/guide/process-doc", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await res.json();
+      setResearchProgressStep(`Step 3: Compiling structured report & SPSS artifacts...`);
+      await new Promise(r => setTimeout(r, 400));
+
+      const botMsg: ChatMessage = {
+        id: `bot_doc_${Date.now()}`,
+        sender: 'bloxbot',
+        text: data.answer || "Bleep bloop! Successfully processed document.",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        attachedDocName: data.docName,
+        operationType: data.operation,
+        spssPackage: data.spssPackage,
+        hypothesis: data.hypothesis,
+        extractedEntities: data.extractedEntities,
+        isResearchResult: true,
+        canNotifyTeam: true
+      };
+
+      setMessages(prev => [...prev, botMsg]);
+      setEmotion(data.emotion || 'happy');
+      if (data.speechText) speakText(data.speechText);
+
+      // Trigger cross-component updates
+      if (data.hypothesis && onHypothesisGenerated) {
+        onHypothesisGenerated(data.hypothesis);
+      }
+      if (data.spssPackage && onApplySpssAnalysis) {
+        onApplySpssAnalysis(data.spssPackage);
+      }
+      if (onTriggerNotification) {
+        onTriggerNotification(
+          "BloxBot Document Operation Complete",
+          `Finished ${opDisplay} on ${docName}!`,
+          "system"
+        );
+      }
+    } catch (err: any) {
+      console.error("BloxBot Doc Processing error:", err);
+      const errorMsg: ChatMessage = {
+        id: `bot_err_${Date.now()}`,
+        sender: 'bloxbot',
+        text: `⚡ **BloxBot Processing Glitch!** Could not complete ${opDisplay} on "${docName}". You can try again with a cleaner PDF/DOCX or click **'Notify Team'** below!`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        canNotifyTeam: true
+      };
+      setMessages(prev => [...prev, errorMsg]);
+      setEmotion('explaining');
+    } finally {
+      setIsAutoResearching(false);
+      setResearchProgressStep('');
+    }
+  };
+
+  // Standard Ask BloxBot
   const handleAsk = async (queryText?: string) => {
     const q = queryText || inputQuery;
-    if (!q.trim() || loading || isAutoResearching) return;
+    if ((!q.trim() && !attachedFile) || loading || isAutoResearching) return;
+
+    if (attachedFile) {
+      // If a file is attached and user hits enter, process it with selected operation or custom query
+      handleExecuteDocOperation(selectedOperation || 'custom_query', q);
+      return;
+    }
 
     if (isListening && recognitionRef.current) {
       recognitionRef.current.stop();
@@ -218,70 +395,10 @@ export default function RobloxGuideBot({
     }
   };
 
-  // BloxBot Autonomous Research Runner
-  const handleAutonomousResearchAction = async (topic: string = 'Environmental Microplastics & Ecotoxicity') => {
-    setIsAutoResearching(true);
-    setEmotion('excited');
-
-    const startMsg: ChatMessage = {
-      id: `bot_auto_${Date.now()}`,
-      sender: 'bloxbot',
-      text: `🚀 **BloxBot Autonomous Research Initialized!**\nTargeting Domain: **${topic}**.\n\nExecuting 4-stage pipeline:\n1. 📚 Document Parsing & Variable Mapping\n2. 🛡️ Dynamic Domain Locking (Zero Quantum Fallback)\n3. 🧬 Evolutionary Hypothesis Generation\n4. 📊 Automated SPSS Statistical Suite Execution`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setMessages(prev => [...prev, startMsg]);
-    speakText(`Starting autonomous research on ${topic}. Parsing variables, checking domain boundaries, and executing statistical analysis!`);
-
-    setResearchProgressStep('Step 1: Extracting document variables and entity relationships...');
-    await new Promise(r => setTimeout(r, 600));
-
-    setResearchProgressStep('Step 2: Enforcing domain constraints (verifying no quantum fallback)...');
-    await new Promise(r => setTimeout(r, 600));
-
-    setResearchProgressStep('Step 3: Multi-agent tournament formulating novel hypothesis candidate...');
-    let generatedHypoTitle = "Trophic Transfer and Cellular Oxidative Stress of Weathered Polyethylene Microfibers in Aquatic Food Webs";
-    let generatedDomain = "Environmental Science, Microplastics & Toxicology";
-    try {
-      const genRes = await fetch("/api/hypotheses/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: topic })
-      });
-      if (genRes.ok) {
-        const genData = await genRes.json();
-        if (genData?.hypothesis?.title) {
-          generatedHypoTitle = genData.hypothesis.title;
-          generatedDomain = genData.hypothesis.domain || generatedDomain;
-        }
-      }
-    } catch (e) {
-      console.warn("Real-time synthesis fallback to built-in template:", e);
-    }
-
-    setResearchProgressStep('Step 4: Running IBM SPSS® Statistics Suite (T-Test & Regression Analysis)...');
-    await new Promise(r => setTimeout(r, 700));
-
-    const resultMsg: ChatMessage = {
-      id: `bot_res_${Date.now()}`,
-      sender: 'bloxbot',
-      text: `🎉 **Autonomous Research Mission Complete!**\n\n**Key Findings for [${topic}]:**\n- **Hypothesis Formulated:** "${generatedHypoTitle}"\n- **Domain Classification:** ${generatedDomain} (Locked & Verified)\n- **SPSS Statistical Verification:** $t(8) = 14.82, p < .001, d = 9.37, 95\\%\\text{ CI } [23.12, 31.96]$\n- **SPSS Syntax Script (.sps):** Generated and ready in **SPSS Studio**!\n\nClick **'Open SPSS Studio'** or **'View Hypotheses'** to explore the complete research package!`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isResearchResult: true
-    };
-
-    setMessages(prev => [...prev, resultMsg]);
-    speakText(`Autonomous research complete! Ingested document, verified domain without fallback, and generated full SPSS statistical analysis.`);
-    setIsAutoResearching(false);
-    setResearchProgressStep('');
-    setEmotion('happy');
-
-    if (onTriggerNotification) {
-      onTriggerNotification(
-        "BloxBot Research Completed",
-        `Autonomous research on ${topic} finished with full SPSS statistical package!`,
-        "system"
-      );
-    }
+  const handleCopyText = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedItemId(id);
+    setTimeout(() => setCopiedItemId(null), 2000);
   };
 
   const handleSendTeamNotification = async (e: React.FormEvent) => {
@@ -336,8 +453,32 @@ export default function RobloxGuideBot({
     }
   };
 
+  const operationsList = [
+    { key: 'generate_thesis', label: 'Thesis / Dissertation Draft', icon: GraduationCap, desc: 'Full Chapters 1-5, theoretical models, RQs, SPSS analysis plan & defense prep', color: 'amber' },
+    { key: 'spss_analysis', label: 'SPSS Statistical Suite', icon: Calculator, desc: 'T-Test, ANOVA, Regression, APA 7th Statement, .sps syntax', color: 'indigo' },
+    { key: 'formulate_hypothesis', label: 'Formulate Hypothesis', icon: Zap, desc: 'Synthesize evolutionary scientific hypothesis tournament', color: 'emerald' },
+    { key: 'executive_summary', label: 'Executive Summary', icon: FileText, desc: 'Extract key takeaways, background, findings, and horizons', color: 'sky' },
+    { key: 'methodology_critique', label: 'Methodology Critique', icon: AlertCircle, desc: 'Evaluate statistical power, validity, biases, & confounds', color: 'amber' },
+    { key: 'extract_entities_graph', label: 'Extract Knowledge Graph', icon: Network, desc: 'Extract proteins, genes, and inject 3D graph links', color: 'purple' },
+    { key: 'grant_funding_match', label: 'Match Grant Opportunities', icon: Award, desc: 'Identify NSF, NIH, DARPA solicitations & grant fit', color: 'rose' },
+    { key: 'experimental_protocol', label: 'Experimental Protocol', icon: Cpu, desc: 'Generate wet-lab/in-silico replication protocol', color: 'cyan' }
+  ];
+
   return (
     <>
+      {/* Hidden File Input for Document Selection */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.docx,.doc,.txt,.csv,.tsv,.json,.md,.sps"
+        onChange={(e) => {
+          if (e.target.files && e.target.files[0]) {
+            handleFileSelect(e.target.files[0]);
+          }
+        }}
+        className="hidden"
+      />
+
       {/* FLOATING ROBLOX MASCOT AVATAR TRIGGER (Bottom Right) */}
       <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end">
         {/* Cute Speech Bubble Hint when collapsed */}
@@ -347,7 +488,7 @@ export default function RobloxGuideBot({
             className="mb-2 bg-[#12151E] border border-sky-500/40 text-slate-200 text-[11px] font-mono px-3 py-1.5 rounded-2xl shadow-xl flex items-center gap-2 cursor-pointer hover:border-sky-400 hover:scale-105 transition-all group animate-bounce"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-            <span>🎙️ Ask <b>BloxBot</b> with Voice or Auto-Research! 🎮</span>
+            <span>🎙️ Ask <b>BloxBot</b> or Add Documents! 📄</span>
             <ChevronRight className="w-3.5 h-3.5 text-sky-400 group-hover:translate-x-0.5 transition-transform" />
           </div>
         )}
@@ -356,7 +497,7 @@ export default function RobloxGuideBot({
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="relative group p-1.5 rounded-2xl bg-gradient-to-br from-sky-600 via-indigo-600 to-purple-600 border-2 border-sky-400/80 shadow-2xl shadow-sky-950/80 hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
-          title="Open Roblox BloxBot Assistant (Voice Enabled)"
+          title="Open Roblox BloxBot Assistant (Document & Voice Enabled)"
         >
           <div className="relative w-12 h-12 bg-[#0D111A] rounded-xl border border-sky-400/50 flex flex-col items-center justify-center overflow-hidden">
             {/* Antenna block */}
@@ -394,7 +535,35 @@ export default function RobloxGuideBot({
 
       {/* CHAT INTERACTIVE DRAWER / POPUP */}
       {isOpen && (
-        <div className="fixed bottom-20 right-4 sm:right-6 w-[94vw] sm:w-[460px] max-h-[620px] h-[84vh] bg-[#0A0C11] border-2 border-sky-500/40 rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200">
+        <div 
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDraggingFile(true);
+          }}
+          onDragLeave={() => setIsDraggingFile(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDraggingFile(false);
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+              handleFileSelect(e.dataTransfer.files[0]);
+            }
+          }}
+          className="fixed bottom-20 right-4 sm:right-6 w-[95vw] sm:w-[500px] max-h-[660px] h-[86vh] bg-[#0A0C11] border-2 border-sky-500/40 rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200"
+        >
+          {/* DRAG AND DROP OVERLAY */}
+          {isDraggingFile && (
+            <div className="absolute inset-0 z-50 bg-sky-950/90 backdrop-blur-sm border-2 border-dashed border-sky-400 rounded-3xl flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-150">
+              <div className="w-14 h-14 rounded-2xl bg-sky-500/20 border border-sky-400 flex items-center justify-center text-sky-300 mb-3 animate-bounce">
+                <FileUp className="w-7 h-7" />
+              </div>
+              <h4 className="text-sm font-bold text-white font-mono uppercase tracking-wider mb-1">
+                Drop Research Document Here
+              </h4>
+              <p className="text-xs text-sky-300 font-mono">
+                BloxBot supports PDF, Word (.docx), CSV, TSV, TXT, JSON
+              </p>
+            </div>
+          )}
           
           {/* Header */}
           <div className="p-3 bg-gradient-to-r from-[#0E121B] via-[#121826] to-[#0E121B] border-b border-slate-800 flex items-center justify-between">
@@ -412,11 +581,11 @@ export default function RobloxGuideBot({
                     BloxBot AI Guide & Research Bot
                   </h3>
                   <span className="bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[8px] font-mono px-1 py-0.2 rounded font-bold">
-                    VOICE ACTIVE
+                    DOCUMENTS ACTIVE
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-400 font-mono">
-                  Autonomous Scientific Assistant
+                  Autonomous Multi-Operation Pipeline
                 </p>
               </div>
             </div>
@@ -456,15 +625,16 @@ export default function RobloxGuideBot({
             </div>
           </div>
 
-          {/* Autonomous Action & Tour Chips */}
+          {/* Quick Action Navigation Bar */}
           <div className="p-2 bg-[#07090D] border-b border-slate-800/80 overflow-x-auto flex items-center gap-1.5 no-scrollbar">
             <button
-              onClick={() => handleAutonomousResearchAction("Environmental Microplastics & Ecotoxicity")}
-              disabled={isAutoResearching}
-              className="shrink-0 px-2.5 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+              className="shrink-0 px-2.5 py-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 transition-colors"
             >
-              <Sparkles className="w-3 h-3 text-emerald-400 animate-spin" /> Auto-Research Microplastics
+              <Paperclip className="w-3 h-3 text-sky-400" />
+              <span>Add Document</span>
             </button>
+            
             <button
               onClick={() => {
                 if (onNavigateTab) onNavigateTab("spss" as any);
@@ -473,56 +643,142 @@ export default function RobloxGuideBot({
             >
               <Calculator className="w-3 h-3 text-indigo-400" /> SPSS Studio
             </button>
+
             <button
-              onClick={() => handleAsk("How do I upload Word documents (.docx) and avoid quantum fallback?")}
-              className="shrink-0 px-2.5 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded-lg text-[10px] font-mono flex items-center gap-1 transition-colors"
+              onClick={() => {
+                if (onNavigateTab) onNavigateTab("hypotheses" as any);
+              }}
+              className="shrink-0 px-2.5 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 rounded-lg text-[10px] font-mono flex items-center gap-1 transition-colors"
             >
-              <FileText className="w-3 h-3 text-sky-400" /> Word / Ingest
+              <Zap className="w-3 h-3 text-emerald-400" /> Hypotheses
+            </button>
+
+            <button
+              onClick={() => handleAsk("How do I generate a full academic thesis or dissertation from my uploaded documents?")}
+              className="shrink-0 px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-mono flex items-center gap-1 transition-colors"
+            >
+              <GraduationCap className="w-3 h-3 text-amber-400" /> Thesis Draft
+            </button>
+
+            <button
+              onClick={() => handleAsk("What document operations can BloxBot perform?")}
+              className="shrink-0 px-2.5 py-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-lg text-[10px] font-mono flex items-center gap-1 transition-colors"
+            >
+              <HelpCircle className="w-3 h-3 text-purple-400" /> Operations Guide
             </button>
           </div>
 
           {/* Chat Messages Body */}
-          <div className="flex-1 p-3 overflow-y-auto space-y-3.5 bg-[#090B10]">
+          <div className="flex-1 p-3.5 overflow-y-auto space-y-3.5 bg-[#090B10]">
             {messages.map((msg) => (
               <div
                 key={msg.id}
                 className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
               >
                 <div className="flex items-center gap-1.5 mb-1 text-[9px] font-mono text-slate-500">
-                  <span>{msg.sender === 'user' ? 'You (Voice / Text)' : 'BloxBot Guide'}</span>
+                  <span>{msg.sender === 'user' ? 'You' : 'BloxBot Guide'}</span>
                   <span>•</span>
                   <span>{msg.timestamp}</span>
+                  {msg.attachedDocName && (
+                    <>
+                      <span>•</span>
+                      <span className="text-sky-400 font-bold">📄 {msg.attachedDocName}</span>
+                    </>
+                  )}
                 </div>
 
                 <div
-                  className={`p-3 rounded-2xl text-xs leading-relaxed max-w-[92%] shadow-md ${
+                  className={`p-3.5 rounded-2xl text-xs leading-relaxed max-w-[94%] shadow-md ${
                     msg.sender === 'user'
                       ? 'bg-sky-600 text-white rounded-tr-none'
-                      : 'bg-[#121622] text-slate-200 border border-slate-800 rounded-tl-none space-y-2'
+                      : 'bg-[#121622] text-slate-200 border border-slate-800 rounded-tl-none space-y-2.5'
                   }`}
                 >
                   <div className="whitespace-pre-line">{msg.text}</div>
 
-                  {/* If Research Result Message, render interactive action button */}
-                  {msg.isResearchResult && (
-                    <div className="mt-2 pt-2 border-t border-slate-700/80 flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => {
-                          if (onNavigateTab) onNavigateTab("spss" as any);
-                        }}
-                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-mono font-bold rounded-lg flex items-center gap-1"
-                      >
-                        <Calculator className="w-3 h-3" />
-                        <span>Open SPSS Studio</span>
-                      </button>
+                  {/* If SPSS Package Result is present, render interactive SPSS widgets */}
+                  {msg.spssPackage && (
+                    <div className="mt-2.5 pt-2.5 border-t border-indigo-500/30 bg-indigo-950/20 rounded-xl p-2.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold text-indigo-300 flex items-center gap-1">
+                          <Calculator className="w-3 h-3 text-indigo-400" />
+                          <span>IBM SPSS Output Generated</span>
+                        </span>
+                        <span className="text-[9px] font-mono bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded">
+                          {msg.spssPackage.analysisType?.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+
+                      {/* Action buttons for SPSS */}
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <button
+                          onClick={() => {
+                            if (onApplySpssAnalysis && msg.spssPackage) {
+                              onApplySpssAnalysis(msg.spssPackage);
+                            }
+                            if (onNavigateTab) onNavigateTab("spss" as any);
+                          }}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-mono font-bold rounded-lg flex items-center gap-1 shadow transition-all"
+                        >
+                          <Calculator className="w-3 h-3" />
+                          <span>Open in SPSS Studio</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleCopyText(`apa-${msg.id}`, msg.spssPackage.apaStatement)}
+                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-mono rounded-lg flex items-center gap-1 transition-colors"
+                        >
+                          {copiedItemId === `apa-${msg.id}` ? <CheckCircle className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span>Copy APA 7th</span>
+                        </button>
+
+                        {msg.spssPackage.spssSyntax && (
+                          <button
+                            onClick={() => handleCopyText(`syntax-${msg.id}`, msg.spssPackage.spssSyntax)}
+                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-mono rounded-lg flex items-center gap-1 transition-colors"
+                          >
+                            {copiedItemId === `syntax-${msg.id}` ? <CheckCircle className="w-3 h-3 text-emerald-400" /> : <FileCode className="w-3 h-3" />}
+                            <span>Copy .sps Syntax</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* If Hypothesis Result, render hypothesis navigation */}
+                  {msg.hypothesis && (
+                    <div className="mt-2.5 pt-2.5 border-t border-emerald-500/30 bg-emerald-950/20 rounded-xl p-2.5 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-emerald-300 text-[10px] font-mono font-bold">
+                        <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Hypothesis Added to Workspace</span>
+                      </div>
                       <button
                         onClick={() => {
                           if (onNavigateTab) onNavigateTab("hypotheses" as any);
                         }}
-                        className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-mono font-bold rounded-lg flex items-center gap-1"
+                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-mono font-bold rounded-lg flex items-center gap-1"
                       >
-                        <Zap className="w-3 h-3" />
                         <span>View Hypotheses</span>
+                        <ChevronRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* If Graph Result, render graph explorer button */}
+                  {msg.extractedEntities && msg.extractedEntities.length > 0 && (
+                    <div className="mt-2.5 pt-2.5 border-t border-purple-500/30 bg-purple-950/20 rounded-xl p-2.5 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-purple-300 text-[10px] font-mono font-bold">
+                        <Network className="w-3.5 h-3.5 text-purple-400" />
+                        <span>{msg.extractedEntities.length} Nodes Injected into Graph</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (onNavigateTab) onNavigateTab("graph" as any);
+                        }}
+                        className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-mono font-bold rounded-lg flex items-center gap-1"
+                      >
+                        <span>Explore 3D Graph</span>
+                        <ChevronRight className="w-3 h-3" />
                       </button>
                     </div>
                   )}
@@ -547,10 +803,10 @@ export default function RobloxGuideBot({
             ))}
 
             {isAutoResearching && (
-              <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-2xl flex flex-col gap-2 max-w-[92%]">
+              <div className="p-3.5 bg-emerald-950/40 border border-emerald-500/40 rounded-2xl flex flex-col gap-2 max-w-[94%]">
                 <div className="flex items-center gap-2 text-emerald-400 text-xs font-mono font-bold">
                   <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
-                  <span>BloxBot Autonomous Researching...</span>
+                  <span>BloxBot Autonomous Engine Executing...</span>
                 </div>
                 <p className="text-[11px] font-mono text-emerald-300 animate-pulse">
                   {researchProgressStep}
@@ -569,8 +825,87 @@ export default function RobloxGuideBot({
             <div ref={messagesEndRef} />
           </div>
 
+          {/* ATTACHED DOCUMENT PREVIEW BAR */}
+          {attachedDocMeta && (
+            <div className="p-2.5 bg-[#0F1420] border-t border-sky-500/30 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400 shrink-0">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-mono text-white font-bold truncate max-w-[240px]">
+                      {attachedDocMeta.name}
+                    </p>
+                    <p className="text-[9px] font-mono text-slate-400">
+                      {attachedDocMeta.type} • {attachedDocMeta.size}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowOperationPicker(!showOperationPicker)}
+                    className="px-2 py-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1"
+                  >
+                    <span>{showOperationPicker ? 'Hide Operations' : 'Choose Operation'}</span>
+                  </button>
+                  <button
+                    onClick={handleRemoveFile}
+                    className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                    title="Remove Document"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Operation Picker Matrix */}
+              {showOperationPicker && (
+                <div className="p-2 bg-[#080A0F] border border-slate-800 rounded-xl grid grid-cols-2 gap-1.5 animate-in fade-in duration-150">
+                  {operationsList.map((op) => {
+                    const OpIcon = op.icon;
+                    return (
+                      <button
+                        key={op.key}
+                        onClick={() => {
+                          setSelectedOperation(op.key);
+                          handleExecuteDocOperation(op.key);
+                        }}
+                        className="p-1.5 rounded-lg bg-[#111622] hover:bg-sky-950/60 border border-slate-800 hover:border-sky-500/50 text-left flex items-start gap-1.5 transition-all group"
+                      >
+                        <OpIcon className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-bold font-mono text-slate-200 group-hover:text-white truncate">
+                            {op.label}
+                          </div>
+                          <div className="text-[8px] text-slate-400 font-mono line-clamp-1">
+                            {op.desc}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Voice Input & Query Footer */}
           <div className="p-3 bg-[#0B0D13] border-t border-slate-800/80 flex items-center gap-2">
+            {/* Document Upload Button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className={`p-2.5 rounded-xl border transition-all flex items-center justify-center ${
+                attachedFile 
+                  ? 'bg-sky-500 text-white border-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.5)]'
+                  : 'bg-slate-800 hover:bg-slate-700 text-sky-400 border-slate-700'
+              }`}
+              title="Attach Document (PDF, Word, CSV, TXT)"
+            >
+              <Paperclip className="w-4 h-4" />
+            </button>
+
             {/* Microphone Button */}
             <button
               onClick={toggleListening}
@@ -588,17 +923,38 @@ export default function RobloxGuideBot({
               type="text"
               value={inputQuery}
               onChange={(e) => setInputQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAsk()}
-              placeholder={isListening ? "Listening to your voice..." : "Speak or type research query..."}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (attachedFile) {
+                    handleExecuteDocOperation(selectedOperation || 'custom_query', inputQuery);
+                  } else {
+                    handleAsk();
+                  }
+                }
+              }}
+              placeholder={
+                isListening 
+                  ? "Listening to your voice..." 
+                  : attachedFile 
+                    ? "Type custom instruction or press send for SPSS / Analysis..." 
+                    : "Speak or type research query, or attach document..."
+              }
               className={`flex-1 bg-[#050609] border focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none font-sans ${
                 isListening ? 'border-rose-500/60 bg-rose-950/20' : 'border-slate-800'
               }`}
             />
             
             <button
-              onClick={() => handleAsk()}
-              disabled={loading || !inputQuery.trim()}
+              onClick={() => {
+                if (attachedFile) {
+                  handleExecuteDocOperation(selectedOperation || 'custom_query', inputQuery);
+                } else {
+                  handleAsk();
+                }
+              }}
+              disabled={loading || isAutoResearching || (!inputQuery.trim() && !attachedFile)}
               className="p-2.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white rounded-xl transition-all cursor-pointer shadow-md"
+              title="Send to BloxBot"
             >
               <SendHorizontal className="w-4 h-4" />
             </button>
@@ -685,3 +1041,4 @@ export default function RobloxGuideBot({
     </>
   );
 }
+

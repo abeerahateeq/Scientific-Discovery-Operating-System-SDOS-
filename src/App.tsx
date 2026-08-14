@@ -6,7 +6,8 @@ import {
   Hypothesis, 
   DiscoveryResponse,
   Bounty,
-  InterdisciplinaryExchangeLog
+  InterdisciplinaryExchangeLog,
+  SpssAnalysisPackage
 } from "./types";
 import KnowledgeGraph from "./components/KnowledgeGraph";
 import LiteratureIngest from "./components/LiteratureIngest";
@@ -126,6 +127,7 @@ export default function App() {
   // Selected hypothesis detail & Favorites Bookmark list
   const [selectedHypothesis, setSelectedHypothesis] = useState<Hypothesis | null>(null);
   const [userFavorites, setUserFavorites] = useState<string[]>([]);
+  const [appliedSpssPackage, setAppliedSpssPackage] = useState<SpssAnalysisPackage | null>(null);
 
   useEffect(() => {
     const savedFavs = localStorage.getItem("sdos_user_favorites");
@@ -1319,6 +1321,7 @@ export default function App() {
               <SpssStudio
                 hypotheses={hypotheses}
                 papers={papers}
+                externalActivePackage={appliedSpssPackage}
               />
             )}
 
@@ -1985,6 +1988,14 @@ export default function App() {
         onNavigateTab={setActiveTab}
         userProfile={userProfile}
         onTriggerNotification={triggerNotification}
+        papers={papers}
+        onHypothesisGenerated={(hypo) => {
+          setHypotheses((prev) => [hypo, ...prev]);
+          setSelectedHypothesis(hypo);
+        }}
+        onApplySpssAnalysis={(pkg) => {
+          setAppliedSpssPackage(pkg);
+        }}
       />
 
       {/* Scientific Discovery Report Export Modal (PDF / CSV / JSON Graph) */}

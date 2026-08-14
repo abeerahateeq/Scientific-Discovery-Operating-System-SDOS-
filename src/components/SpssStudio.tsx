@@ -1,5 +1,10 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { SpssAnalysisPackage, SpssVariable, SpssOutputTable, Hypothesis, ScientificPaper } from '../types';
+import SpssProgressBar from './spss/SpssProgressBar';
+import SpssQuickStats from './spss/SpssQuickStats';
+import SpssVariableInspector from './spss/SpssVariableInspector';
+import SpssDataPreview from './spss/SpssDataPreview';
+import SpssExportModal from './spss/SpssExportModal';
 import { 
   Calculator, 
   Play, 
@@ -33,22 +38,25 @@ import {
   Mic,
   FileUp,
   AlertCircle,
-  HelpCircle
+  HelpCircle,
+  Eye
 } from 'lucide-react';
 
 interface SpssStudioProps {
   hypotheses?: Hypothesis[];
   papers?: ScientificPaper[];
   onExportNotebook?: (pkg: any) => void;
+  externalActivePackage?: SpssAnalysisPackage | null;
 }
 
-export default function SpssStudio({ hypotheses = [], papers = [], onExportNotebook }: SpssStudioProps) {
+export default function SpssStudio({ hypotheses = [], papers = [], onExportNotebook, externalActivePackage }: SpssStudioProps) {
   const [selectedAnalysisType, setSelectedAnalysisType] = useState<SpssAnalysisPackage['analysisType']>('Independent_Samples_tTest');
-  const [activeView, setActiveView] = useState<'output' | 'data_view' | 'variable_view' | 'syntax' | 'agent_protocol'>('output');
+  const [activeView, setActiveView] = useState<'output' | 'data_view' | 'variable_view' | 'syntax' | 'quick_stats'>('output');
   const [copiedSyntax, setCopiedSyntax] = useState(false);
   const [copiedApa, setCopiedApa] = useState(false);
   const [confidenceLevel, setConfidenceLevel] = useState<number>(95);
   const [voiceFeedbackEnabled, setVoiceFeedbackEnabled] = useState<boolean>(true);
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   
   // BLOXBOT Autonomous Agent State
   const [isAgentRunning, setIsAgentRunning] = useState(false);
@@ -285,6 +293,23 @@ ONEWAY Biomass_Yield Stomatal_Conductance BY Inoculant_Type
   });
 
   const [activePackageKey, setActivePackageKey] = useState<string>('microplastics_ecotoxicity');
+
+  // Handle externally applied SPSS analysis packages from BloxBot
+  React.useEffect(() => {
+    if (externalActivePackage) {
+      const pkgKey = externalActivePackage.id || `bloxbot_pkg_${Date.now()}`;
+      setSampleDatasets(prev => ({
+        ...prev,
+        [pkgKey]: externalActivePackage
+      }));
+      setActivePackageKey(pkgKey);
+      setActiveView('output');
+      if (externalActivePackage.analysisType) {
+        setSelectedAnalysisType(externalActivePackage.analysisType);
+      }
+    }
+  }, [externalActivePackage]);
+
   const activePackage = sampleDatasets[activePackageKey] || sampleDatasets.microplastics_ecotoxicity;
 
   // Available documents combining uploaded papers and standard benchmarks
@@ -426,8 +451,8 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
   };
 
   const triggerAgenticDocumentWorkflow = (fileName: string, content: any) => {
-    // Switch to agent protocol and run
-    setActiveView('agent_protocol');
+    // Switch to output view with live progress bar and run
+    setActiveView('output');
     setCustomResearchPrompt(`Analyze ingested document: ${fileName}`);
     handleBloxBotAgenticExecution();
   };
@@ -512,6 +537,22 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
     document.body.removeChild(element);
   };
 
+  const handleUpdateVariables = (updatedVars: SpssVariable[]) => {
+    setSampleDatasets((prev) => {
+      const current = prev[activePackageKey] || activePackage;
+      return {
+        ...prev,
+        [activePackageKey]: {
+          ...current,
+          dataset: {
+            ...current.dataset,
+            variables: updatedVars
+          }
+        }
+      };
+    });
+  };
+
   return (
     <div id="spss-software-studio" className="flex flex-col gap-4 text-slate-200">
       {/* Top Header & Overview Bar */}
@@ -579,13 +620,24 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
             <span>Upload Data / Doc</span>
           </button>
 
+          {/* Export Output Button */}
+          <button
+            id="spss-export-output-btn"
+            type="button"
+            onClick={() => setIsExportModalOpen(true)}
+            className="px-3.5 py-1.5 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-mono text-[11px] font-bold flex items-center gap-1.5 transition-all border border-emerald-500/40 cursor-pointer shadow-sm"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Export Output</span>
+          </button>
+
           <button
             type="button"
             onClick={handleDownloadSps}
             className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-mono text-[11px] font-bold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download .SPS</span>
+            <FileCode className="w-3.5 h-3.5" />
+            <span>.SPS Syntax</span>
           </button>
         </div>
       </div>
@@ -679,38 +731,20 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
           </div>
         </div>
 
-        {/* Live Agentic Execution Progress Indicator */}
-        {isAgentRunning && (
-          <div className="bg-[#07080A] border border-indigo-500/40 rounded-lg p-3 flex flex-col gap-2 animate-fadeIn">
-            <div className="flex items-center justify-between text-[11px] font-mono">
-              <span className="text-indigo-300 font-bold flex items-center gap-2">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-400" />
-                {agentStatusText}
-              </span>
-              <span className="text-slate-400">{agentStep * 25}% Complete</span>
-            </div>
-            {/* Progress Bar */}
-            <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-              <div 
-                className="bg-indigo-500 h-1.5 transition-all duration-300 rounded-full"
-                style={{ width: `${agentStep * 25}%` }}
-              />
-            </div>
-            {/* Live Terminal Log */}
-            {agentLogMessages.length > 0 && (
-              <div className="bg-black/50 p-2 rounded text-[10px] font-mono text-slate-300 max-h-24 overflow-y-auto flex flex-col gap-1 border border-slate-800/80">
-                {agentLogMessages.map((msg, i) => (
-                  <div key={i} className="text-slate-400">{msg}</div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        {/* Live Visual Agentic Progress Bar Component */}
+        <SpssProgressBar
+          isRunning={isAgentRunning}
+          step={agentStep}
+          statusText={agentStatusText}
+          logMessages={agentLogMessages}
+          documentTitle={availableDocuments.find(d => d.id === selectedDocumentId)?.title || uploadedFileName || activePackage.title}
+          analysisType={selectedAnalysisType}
+        />
       </div>
 
       {/* View Switcher Tabs */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-        <div className="flex items-center gap-1 bg-[#07080A] p-1 rounded-lg border border-slate-800 text-[11px] font-mono">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-2 gap-2">
+        <div className="flex flex-wrap items-center gap-1 bg-[#07080A] p-1 rounded-lg border border-slate-800 text-[11px] font-mono">
           <button
             onClick={() => setActiveView('output')}
             className={`px-3 py-1 rounded transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -727,7 +761,16 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
             }`}
           >
             <TableIcon className="w-3.5 h-3.5" />
-            <span>Data View</span>
+            <span>Data View & Preview</span>
+          </button>
+          <button
+            onClick={() => setActiveView('quick_stats')}
+            className={`px-3 py-1 rounded transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeView === 'quick_stats' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Calculator className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Quick Stats Widget</span>
           </button>
           <button
             onClick={() => setActiveView('variable_view')}
@@ -736,7 +779,7 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
             }`}
           >
             <Database className="w-3.5 h-3.5" />
-            <span>Variable View</span>
+            <span>Variable Inspector</span>
           </button>
           <button
             onClick={() => setActiveView('syntax')}
@@ -749,8 +792,15 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
           </button>
         </div>
 
-        <div className="text-[11px] font-mono text-slate-400 hidden sm:block">
-          Domain: <span className="text-slate-200 font-semibold">{activePackage.domain}</span>
+        <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
+          <button
+            onClick={() => setIsExportModalOpen(true)}
+            className="px-2.5 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 font-bold flex items-center gap-1 transition-all cursor-pointer"
+          >
+            <Download className="w-3 h-3 text-emerald-400" />
+            <span>Export Report (JSON / CSV)</span>
+          </button>
+          <span className="hidden md:inline">Domain: <span className="text-slate-200 font-semibold">{activePackage.domain}</span></span>
         </div>
       </div>
 
@@ -766,13 +816,22 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
                   APA 7th Edition Statistical Findings
                 </span>
               </div>
-              <button
-                onClick={handleCopyApa}
-                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[10px] flex items-center gap-1 transition-all cursor-pointer"
-              >
-                {copiedApa ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                <span>{copiedApa ? 'Copied APA' : 'Copy APA Statement'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsExportModalOpen(true)}
+                  className="px-2.5 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 font-mono text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  <Download className="w-3 h-3 text-emerald-400" />
+                  <span>Export Report</span>
+                </button>
+                <button
+                  onClick={handleCopyApa}
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[10px] flex items-center gap-1 transition-all cursor-pointer"
+                >
+                  {copiedApa ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedApa ? 'Copied APA' : 'Copy APA Statement'}</span>
+                </button>
+              </div>
             </div>
 
             <div className="p-3 bg-[#07080A] rounded-lg border border-slate-800/80 font-sans text-xs text-slate-200 leading-relaxed italic">
@@ -794,6 +853,13 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
               </div>
             </div>
           </div>
+
+          {/* Quick Stats Summary Widget */}
+          <SpssQuickStats
+            variables={activePackage.dataset.variables}
+            rows={activePackage.dataset.rows}
+            datasetTitle={activePackage.title}
+          />
 
           {/* SPSS Pivot Output Tables */}
           {activePackage.outputSummary.tables.map((table, tIdx) => (
@@ -854,103 +920,90 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
         </div>
       )}
 
-      {/* TAB 2: DATA VIEW (SPREADSHEET GRID) */}
+      {/* TAB 2: DATA VIEW (PREVIEW PANE + FULL SPREADSHEET GRID) */}
       {activeView === 'data_view' && (
-        <div className="bg-[#0F1115] border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-md animate-fadeIn">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <div className="flex items-center gap-2">
-              <TableIcon className="w-4 h-4 text-indigo-400" />
-              <span className="font-mono text-xs font-bold text-white">SPSS Data View Matrix (Cases x Variables)</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono text-slate-400">
-                Total Cases: {activePackage.dataset.rows.length} | Variables: {activePackage.dataset.variables.length}
-              </span>
-            </div>
-          </div>
+        <div className="flex flex-col gap-4 animate-fadeIn">
+          {/* Data Preview Pane (First 10 Rows with column type badges) */}
+          <SpssDataPreview
+            variables={activePackage.dataset.variables}
+            rows={activePackage.dataset.rows}
+            datasetTitle={activePackage.title}
+          />
 
-          <div className="overflow-x-auto border border-slate-800 rounded max-h-[500px]">
-            <table className="w-full text-left font-mono text-[11px] border-collapse">
-              <thead className="sticky top-0 bg-slate-900 shadow">
-                <tr className="border-b border-slate-800">
-                  <th className="p-2 text-slate-500 w-12 border-r border-slate-800 text-center">#</th>
-                  {activePackage.dataset.variables.map((v, idx) => (
-                    <th key={idx} className="p-2 text-slate-300 border-r border-slate-800 font-bold whitespace-nowrap">
-                      {v.name}
-                      <span className="block text-[9px] text-slate-500 font-normal">{v.measure}</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {activePackage.dataset.rows.map((row, rIdx) => (
-                  <tr key={rIdx} className="border-b border-slate-800/40 hover:bg-slate-800/30">
-                    <td className="p-2 text-slate-500 border-r border-slate-800 text-center">{rIdx + 1}</td>
-                    {activePackage.dataset.variables.map((v, cIdx) => (
-                      <td key={cIdx} className="p-2 text-slate-300 border-r border-slate-800 whitespace-nowrap">
-                        {row[v.name] !== undefined ? String(row[v.name]) : row[v.label] !== undefined ? String(row[v.label]) : '-'}
-                      </td>
+          {/* Full Data Matrix */}
+          <div className="bg-[#0F1115] border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-md">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <TableIcon className="w-4 h-4 text-indigo-400" />
+                <span className="font-mono text-xs font-bold text-white">Full Cases Matrix (N = {activePackage.dataset.rows.length})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono text-slate-400">
+                  Total Cases: {activePackage.dataset.rows.length} | Variables: {activePackage.dataset.variables.length}
+                </span>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-800 rounded max-h-[500px]">
+              <table className="w-full text-left font-mono text-[11px] border-collapse">
+                <thead className="sticky top-0 bg-slate-900 shadow">
+                  <tr className="border-b border-slate-800">
+                    <th className="p-2 text-slate-500 w-12 border-r border-slate-800 text-center">#</th>
+                    {activePackage.dataset.variables.map((v, idx) => (
+                      <th key={idx} className="p-2 text-slate-300 border-r border-slate-800 font-bold whitespace-nowrap">
+                        {v.name}
+                        <span className="block text-[9px] text-slate-500 font-normal">{v.measure}</span>
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: VARIABLE VIEW (SPSS DICTIONARY) */}
-      {activeView === 'variable_view' && (
-        <div className="bg-[#0F1115] border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-md animate-fadeIn">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <div className="flex items-center gap-2">
-              <Database className="w-4 h-4 text-indigo-400" />
-              <span className="font-mono text-xs font-bold text-white">SPSS Variable View Dictionary</span>
+                </thead>
+                <tbody>
+                  {activePackage.dataset.rows.map((row, rIdx) => (
+                    <tr key={rIdx} className="border-b border-slate-800/40 hover:bg-slate-800/30">
+                      <td className="p-2 text-slate-500 border-r border-slate-800 text-center">{rIdx + 1}</td>
+                      {activePackage.dataset.variables.map((v, cIdx) => (
+                        <td key={cIdx} className="p-2 text-slate-300 border-r border-slate-800 whitespace-nowrap">
+                          {row[v.name] !== undefined ? String(row[v.name]) : row[v.label] !== undefined ? String(row[v.label]) : '-'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-
-          <div className="overflow-x-auto border border-slate-800 rounded">
-            <table className="w-full text-left font-mono text-[11px] border-collapse">
-              <thead>
-                <tr className="bg-slate-900 border-b border-slate-800">
-                  <th className="p-2 text-slate-400 border-r border-slate-800">Name</th>
-                  <th className="p-2 text-slate-400 border-r border-slate-800">Type</th>
-                  <th className="p-2 text-slate-400 border-r border-slate-800">Decimals</th>
-                  <th className="p-2 text-slate-400 border-r border-slate-800">Label</th>
-                  <th className="p-2 text-slate-400 border-r border-slate-800">Values</th>
-                  <th className="p-2 text-slate-400">Measure</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activePackage.dataset.variables.map((v, idx) => (
-                  <tr key={idx} className="border-b border-slate-800/40 hover:bg-slate-800/30">
-                    <td className="p-2 font-bold text-indigo-400 border-r border-slate-800">{v.name}</td>
-                    <td className="p-2 text-slate-300 border-r border-slate-800">{v.type}</td>
-                    <td className="p-2 text-slate-300 border-r border-slate-800">{v.decimals ?? 0}</td>
-                    <td className="p-2 text-slate-300 border-r border-slate-800">{v.label}</td>
-                    <td className="p-2 text-slate-400 border-r border-slate-800">
-                      {v.values && v.values.length > 0
-                        ? v.values.map(val => `{${val.code}="${val.label}"}`).join(', ')
-                        : 'None'}
-                    </td>
-                    <td className="p-2">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                        v.measure === 'Scale' 
-                          ? 'bg-emerald-500/20 text-emerald-400' 
-                          : 'bg-indigo-500/20 text-indigo-400'
-                      }`}>
-                        {v.measure}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       )}
 
-      {/* TAB 4: SYNTAX (.SPS) */}
+      {/* TAB 3: QUICK STATS WIDGET */}
+      {activeView === 'quick_stats' && (
+        <div className="flex flex-col gap-4 animate-fadeIn">
+          <SpssQuickStats
+            variables={activePackage.dataset.variables}
+            rows={activePackage.dataset.rows}
+            datasetTitle={activePackage.title}
+          />
+          <SpssDataPreview
+            variables={activePackage.dataset.variables}
+            rows={activePackage.dataset.rows}
+            datasetTitle={activePackage.title}
+            onOpenFullDataView={() => setActiveView('data_view')}
+          />
+        </div>
+      )}
+
+      {/* TAB 4: VARIABLE VIEW (VARIABLE INSPECTOR) */}
+      {activeView === 'variable_view' && (
+        <div className="flex flex-col gap-4 animate-fadeIn">
+          <SpssVariableInspector
+            variables={activePackage.dataset.variables}
+            onUpdateVariables={handleUpdateVariables}
+            rows={activePackage.dataset.rows}
+          />
+        </div>
+      )}
+
+      {/* TAB 5: SYNTAX (.SPS) */}
       {activeView === 'syntax' && (
         <div className="bg-[#0F1115] border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-md animate-fadeIn">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
@@ -983,6 +1036,13 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
           </pre>
         </div>
       )}
+
+      {/* Export Output Modal */}
+      <SpssExportModal
+        analysisPackage={activePackage}
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+      />
     </div>
   );
 }
