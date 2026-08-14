@@ -1,6 +1,7 @@
 import React from "react";
 import { Hypothesis } from "../types";
 import { Flame, Layers, Sparkles, TrendingUp, ShieldCheck, Cpu } from "lucide-react";
+import { classifyTopicDomain } from "../config/domainTemplates";
 
 interface DiscoveryHeatmapProps {
   hypotheses: Hypothesis[];
@@ -20,19 +21,18 @@ export default function DiscoveryHeatmap({ hypotheses, onSelectHypothesis }: Dis
   const domainMap: Record<string, Hypothesis[]> = {};
 
   hypotheses.forEach((hypo) => {
-    const d = hypo.domain || "Quantum Biophysics";
+    const d = hypo.domain || classifyTopicDomain(hypo.title + " " + (hypo.query || "")).domainName;
     if (!domainMap[d]) domainMap[d] = [];
     domainMap[d].push(hypo);
   });
 
   // Ensure standard scientific domains are included if not present
   const defaultDomains = [
-    "Quantum Biophysics",
-    "Physical Sciences & Information Theory",
-    "Nanomaterials & Catalysis",
-    "Advanced Materials & Clean Energy",
-    "Complex Systems & AI Topologies",
-    "Astrophysical Plasmas"
+    "Artificial Intelligence, LLMs & Computer Science",
+    "Biomedical Science, Oncology & Molecular Biology",
+    "Materials Science, Chemistry & Energy Systems",
+    "Quantum Physics & High-Energy Physical Sciences",
+    "Social Sciences, Behavioral Psychology & Economics"
   ];
 
   defaultDomains.forEach((d) => {

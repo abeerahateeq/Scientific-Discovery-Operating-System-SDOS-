@@ -10,6 +10,7 @@ import {
   autonomousDiscoverySchema 
 } from "../../lib/schemas.js";
 import { Hypothesis, AgentName } from "../../types.js";
+import { classifyTopicDomain } from "../../config/domainTemplates.js";
 
 const router = Router();
 
@@ -99,7 +100,8 @@ ${currentGraphContext}
 Respond ONLY with a valid JSON object matching the following schema (No markdown blocks, no prefix text):
 {
   "title": "A highly creative, scientific, and sophisticated paper-like title",
-  "description": "A detailed, technical, paragraph-long description explaining the biological, physics, or computing mechanism, the cross-domain analogies, and the hypothesis",
+  "description": "A detailed, technical, paragraph-long description explaining the domain mechanism, cross-domain analogies, and hypothesis",
+  "domain": "The primary scientific domain (e.g., 'Artificial Intelligence, LLMs & Computer Science', 'Biomedical Science, Oncology & Molecular Biology', 'Materials Science, Chemistry & Energy Systems', 'Quantum Physics & High-Energy Physical Sciences', or 'Social Sciences, Behavioral Psychology & Economics')",
   "confidence": number (between 0.1 and 0.99),
   "supportingEvidence": ["paper-id-1", "paper-id-2"],
   "analogousMethods": ["Method 1 description", "Method 2 description"],
@@ -135,11 +137,14 @@ Be technically detailed and accurate, writing like a DeepMind / Nobel prize rese
 
       log("Ranking Agent", "Ranking hypothesis feasibility metrics and outputting to Research Dashboard...");
 
+      const computedDomain = result.domain || classifyTopicDomain((result.title || "") + " " + query + " " + (result.description || "")).domainName;
+
       newHypothesis = {
         id: `hypo-${Date.now()}`,
         title: result.title || "Synthesized Scientific Hypothesis",
         query,
         description: result.description || "Synthesized scientific model.",
+        domain: computedDomain,
         confidence: result.confidence || 0.65,
         supportingEvidence: verifiedCitations,
         analogousMethods: result.analogousMethods || ["Cross-domain analogy mapping"],

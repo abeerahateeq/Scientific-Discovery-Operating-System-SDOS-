@@ -1,5 +1,6 @@
 import { Hypothesis } from "../types";
 import { jsPDF } from "jspdf";
+import { classifyTopicDomain } from "../config/domainTemplates";
 
 export interface DashboardStats {
   totalPapers: number;
@@ -143,7 +144,7 @@ export function exportDashboardToPDF(stats: DashboardStats, hypotheses: Hypothes
 
       const confPercent = Math.round(h.confidence * 100);
       const noveltyVal = Math.round((h.noveltyScore || 0.8) * 100);
-      const domainStr = h.domain || "Quantum Biophysics";
+      const domainStr = h.domain || classifyTopicDomain(h.title + " " + (h.query || "")).domainName;
 
       doc.setFillColor(248, 250, 252);
       doc.setDrawColor(203, 213, 225);
@@ -196,7 +197,7 @@ function exportDashboardToPDFPrintFallback(stats: DashboardStats, hypotheses: Hy
         <hr/>
         <h3>Hypotheses</h3>
         <ul>
-          ${hypotheses.map(h => `<li><strong>${h.title}</strong> — Confidence: ${Math.round(h.confidence * 100)}% (${h.domain || 'Quantum Biophysics'})</li>`).join('')}
+          ${hypotheses.map(h => `<li><strong>${h.title}</strong> — Confidence: ${Math.round(h.confidence * 100)}% (${h.domain || classifyTopicDomain(h.title).domainName})</li>`).join('')}
         </ul>
       </body>
     </html>

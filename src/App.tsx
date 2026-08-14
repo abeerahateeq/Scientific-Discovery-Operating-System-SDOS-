@@ -24,6 +24,8 @@ import RobloxGuideBot from "./components/RobloxGuideBot";
 import ExportReportModal from "./components/ExportReportModal";
 import ApiKeyModal from "./components/ApiKeyModal";
 import RecentActivityView, { ActivityItem } from "./components/RecentActivityView";
+import SpssStudio from "./components/SpssStudio";
+import { classifyTopicDomain } from "./config/domainTemplates";
 import { 
   auth, 
   onAuthStateChanged, 
@@ -78,12 +80,13 @@ import {
   ChevronDown,
   ChevronRight,
   AlertTriangle,
-  Layers
+  Layers,
+  Calculator
 } from "lucide-react";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "graph" | "literature" | "hypotheses" | "gaps" | "market" | "funding" | "institutional" | "research_os" | "activity"
+    "dashboard" | "graph" | "literature" | "hypotheses" | "gaps" | "market" | "funding" | "institutional" | "research_os" | "activity" | "spss"
   >("dashboard");
   
   // User Auth & Notification state
@@ -330,7 +333,7 @@ export default function App() {
   // Group displayed hypotheses by domain for Cluster View
   const clusteredHypotheses: Record<string, Hypothesis[]> = {};
   displayedHypotheses.forEach((h) => {
-    const dom = h.domain || "Quantum Biophysics";
+    const dom = h.domain || classifyTopicDomain(h.title + " " + (h.query || "")).domainName;
     if (!clusteredHypotheses[dom]) clusteredHypotheses[dom] = [];
     clusteredHypotheses[dom].push(h);
   });
@@ -1006,6 +1009,22 @@ export default function App() {
             </button>
 
             <button
+              id="tab-spss-btn"
+              onClick={() => setActiveTab("spss")}
+              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-[11px] font-medium transition-all ${
+                activeTab === "spss"
+                  ? "bg-indigo-500/15 text-indigo-300 border-l-2 border-indigo-400 pl-2 font-bold"
+                  : "text-indigo-400/90 hover:bg-[#16181D] hover:text-indigo-300"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Calculator className="w-3.5 h-3.5 shrink-0 text-indigo-400" />
+                <span>SPSS Studio</span>
+              </div>
+              <span className="text-[9px] font-mono bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded font-bold">.SPS</span>
+            </button>
+
+            <button
               id="tab-gaps-btn"
               onClick={() => setActiveTab("gaps")}
               className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-[11px] font-medium transition-all ${
@@ -1293,6 +1312,13 @@ export default function App() {
                 onLinkHypothesisToBounty={handleLinkHypothesisToBounty}
                 isCreatingBounty={isCreatingBounty}
                 isLinking={isLinkingBounty}
+              />
+            )}
+
+            {activeTab === "spss" && (
+              <SpssStudio
+                hypotheses={hypotheses}
+                papers={papers}
               />
             )}
 
@@ -1925,7 +1951,7 @@ export default function App() {
               const enriched: Hypothesis = {
                 id: item.id || `hypo-mb-${Date.now()}`,
                 title: item.title || "Morning Briefing Hypothesis Candidate",
-                domain: item.domain || "Quantum Biophysics",
+                domain: item.domain || classifyTopicDomain(item.title || "").domainName,
                 description: item.summary || "Hypothesis generated during overnight multi-agent synthesis.",
                 query: "Overnight Briefing Synthesis",
                 confidence: 0.91,

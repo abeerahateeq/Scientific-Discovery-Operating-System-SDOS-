@@ -32,7 +32,8 @@ const SEED_PAPERS: ScientificPaper[] = [
     abstract: "Protein A plays a vital role in stabilizing neuronal synapses. In this study, we demonstrate that active stabilization of Protein A conformation directly inhibits Gene X activity, which prevents pathological tau phosphorylation cascade and amyloid buildup.",
     ingestedDate: new Date().toISOString(),
     status: "analyzed",
-    entitiesExtracted: ["Protein A", "Gene X"]
+    entitiesExtracted: ["Protein A", "Gene X"],
+    domain: "Biomedical Science, Oncology & Molecular Biology"
   },
   {
     id: "paper-002",
@@ -43,7 +44,8 @@ const SEED_PAPERS: ScientificPaper[] = [
     abstract: "Alzheimer's Disease remains a critical bottleneck in gerontology. Here, we present Drug Z, a blood-brain barrier penetrant small-molecule. Drug Z selectively binds and stabilizes Protein A, preventing its degradation and maintaining network connectivity in mouse models.",
     ingestedDate: new Date().toISOString(),
     status: "analyzed",
-    entitiesExtracted: ["Drug Z", "Protein A", "Alzheimer's Disease"]
+    entitiesExtracted: ["Drug Z", "Protein A", "Alzheimer's Disease"],
+    domain: "Biomedical Science, Oncology & Molecular Biology"
   },
   {
     id: "paper-003",
@@ -54,7 +56,8 @@ const SEED_PAPERS: ScientificPaper[] = [
     abstract: "Quantum error correction (QEC) protects logical information from environmental decoherence. We analyze Topological Stabilizer Codes, demonstrating how stabilizers identify and correct error syndromes by finding localized minimum-weight matching paths on discrete grids.",
     ingestedDate: new Date().toISOString(),
     status: "analyzed",
-    entitiesExtracted: ["Quantum Error Correction", "Topological Stabilizer Code"]
+    entitiesExtracted: ["Quantum Error Correction", "Topological Stabilizer Code"],
+    domain: "Quantum Physics & High-Energy Physical Sciences"
   },
   {
     id: "paper-004",
@@ -65,7 +68,8 @@ const SEED_PAPERS: ScientificPaper[] = [
     abstract: "Modeling the Protein Folding Landscape is a major computational challenge. We demonstrate that tensor network contraction algorithms can map high-dimensional folding landscapes into hierarchical tree tensors, reducing search space but hitting localized combinatorial barriers.",
     ingestedDate: new Date().toISOString(),
     status: "analyzed",
-    entitiesExtracted: ["Tensor Network Contraction", "Protein Folding Landscape"]
+    entitiesExtracted: ["Tensor Network Contraction", "Protein Folding Landscape"],
+    domain: "Materials Science, Chemistry & Energy Systems"
   },
   {
     id: "paper-005",
@@ -76,7 +80,8 @@ const SEED_PAPERS: ScientificPaper[] = [
     abstract: "We establish a mathematical isomorphism between the fault-tolerant threshold landscape of Topological Stabilizer Codes and the spin-glass optimization barriers of high-dimensional physical systems, including macromolecular folding optimization structures.",
     ingestedDate: new Date().toISOString(),
     status: "analyzed",
-    entitiesExtracted: ["Topological Stabilizer Code", "Protein Folding Landscape"]
+    entitiesExtracted: ["Topological Stabilizer Code", "Protein Folding Landscape"],
+    domain: "Quantum Physics & High-Energy Physical Sciences"
   }
 ];
 
@@ -271,6 +276,7 @@ const SEED_HYPOTHESES: Hypothesis[] = [
       "Highly specific therapeutic peptides can be designed in silico in seconds.",
       "Customized enzymes can be synthesized for direct targeted amyloid-beta degradation."
     ],
+    domain: "Quantum Physics & High-Energy Physical Sciences",
     createdAt: new Date().toISOString()
   },
   {
@@ -325,6 +331,7 @@ const SEED_HYPOTHESES: Hypothesis[] = [
       eligibility: "Higher Education Institutions, Non-profit Research Labs",
       url: "https://grants.nih.gov/grants/guide/pa-files/PAR-26-089.html"
     },
+    domain: "Biomedical Science, Oncology & Molecular Biology",
     createdAt: new Date().toISOString()
   }
 ];

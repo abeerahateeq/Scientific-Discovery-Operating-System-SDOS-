@@ -7,6 +7,7 @@ export const pdfMetadataSchema = z.object({
   journal: z.string().default("Indexed PDF Ingestion"),
   year: z.number().int().default(() => new Date().getFullYear()),
   abstract: z.string().default("Abstract extraction completed."),
+  domain: z.string().optional(),
   references: z.array(z.object({
     title: z.string(),
     authors: z.string(),
@@ -33,6 +34,7 @@ export const pdfMetadataSchema = z.object({
 export const hypothesisSchema = z.object({
   title: z.string(),
   description: z.string(),
+  domain: z.string().optional(),
   confidence: z.number().min(0.1).max(0.99).default(0.7),
   supportingEvidence: z.array(z.string()).default([]),
   analogousMethods: z.array(z.string()).default([]),

@@ -9,6 +9,12 @@ import {
 } from "../../types.js";
 import { db } from "../../lib/db.js";
 import { getAiClient } from "../helpers.js";
+import { 
+  classifyTopicDomain, 
+  validateDomainConsistency, 
+  sanitizeCrossDomainDrift, 
+  DOMAIN_TEMPLATES 
+} from "../../config/domainTemplates.js";
 
 const router = Router();
 
@@ -407,9 +413,10 @@ function getDomainGenerator(topic: string) {
     };
   }
 
-  // Default / Quantum / Physical Sciences / General
+  // Default / Interdisciplinary / General
+  const dynamicDomain = classifyTopicDomain(topic).domainName;
   return {
-    litReviewDomain: "Quantum Information & Physical Sciences",
+    litReviewDomain: dynamicDomain,
     themes: [
       {
         themeName: "Topological Invariants and Error-Correcting Landscapes",
@@ -482,18 +489,21 @@ function getDomainGenerator(topic: string) {
 
 // 1. Generate Literature Review
 router.post("/literature-review", requireAuth, async (req, res) => {
-  const { topic, domain, paperIds } = req.body;
+  const { topic, domain, paperIds, domainLockEnabled } = req.body;
   const targetTopic = topic || "Cross-Disciplinary Quantum-Enhanced Physical Modeling";
+  const schema = classifyTopicDomain(targetTopic, domain);
 
   const ai = getAiClient(req);
   if (ai) {
     try {
-      const prompt = `You are a scientific literature review synthesis agent. Generate a systematic literature review for: "${targetTopic}".
-Ensure all themes, methodology comparisons, and research gaps match the SPECIFIC domain of "${targetTopic}".
+      const prompt = `${schema.systemInstructionConstraint}
+
+You are a scientific literature review synthesis agent. Generate a systematic literature review for: "${targetTopic}".
+Ensure all themes, methodology comparisons, and research gaps match the SPECIFIC domain of "${schema.domainName}".
 
 Return strictly a valid JSON object matching this schema:
 {
-  "domain": "...",
+  "domain": "${schema.domainName}",
   "themes": [
     {"themeName": "...", "summary": "...", "supportingPapers": ["...", "..."]}
   ],
@@ -517,20 +527,29 @@ Return strictly a valid JSON object matching this schema:
 
       if (response.text) {
         const parsed = JSON.parse(response.text);
+        const rawContent = parsed.fullMarkdownContent || `# Systematic Literature Review: ${targetTopic}\n\nAutomated synthesis completed.`;
+        const sanitizedContent = sanitizeCrossDomainDrift(rawContent, schema);
+        const audit = validateDomainConsistency(sanitizedContent, schema);
+
+        const verifiedCitations = schema.verifiedBibliographicalAnchors.map(anchor => ({
+          paperId: anchor.paperId,
+          citationText: `${anchor.authors} (${anchor.year}). ${anchor.title}. ${anchor.venue}. DOI: ${anchor.doi}`
+        }));
+
         const litReview: LiteratureReview = {
           id: `litrev-${Date.now()}`,
           title: `Automated Systematic Review: ${targetTopic}`,
-          domain: parsed.domain || domain || "Interdisciplinary Research",
+          domain: schema.domainName,
           themes: parsed.themes || [],
           methodologyComparisons: parsed.methodologyComparisons || [],
           consensusAndDisagreements: parsed.consensusAndDisagreements || [],
           researchGapsHighlighted: parsed.researchGapsHighlighted || [],
-          fullMarkdownContent: parsed.fullMarkdownContent || `# Systematic Literature Review: ${targetTopic}\n\nAutomated synthesis completed.`,
-          citations: [
-            { paperId: "p1", citationText: "Zhuang, Y., et al. (2025). Graph of AI Ideas. Nature Machine Intelligence." },
-            { paperId: "p2", citationText: "Zhao, H., et al. (2026). AGENTiGraph Frameworks. Journal of AI & Science." }
-          ],
-          createdAt: new Date().toISOString()
+          fullMarkdownContent: sanitizedContent,
+          citations: verifiedCitations,
+          createdAt: new Date().toISOString(),
+          consistencyScore: audit.consistencyScore,
+          domainCategory: schema.category,
+          domainLockApplied: domainLockEnabled !== false
         };
         return res.json(litReview);
       }
@@ -541,20 +560,29 @@ Return strictly a valid JSON object matching this schema:
 
   // Fallback to domain-aware generator
   const gen = getDomainGenerator(targetTopic);
+  const rawContent = `# Systematic Literature Review: ${targetTopic}\n\n## Executive Summary\nThis automated systematic review synthesizes peer-reviewed literature for **${targetTopic}** within the domain of **${schema.domainName}**.\n\n### Key Synthesis Themes\n${gen.themes.map((t, idx) => `${idx + 1}. **${t.themeName}**: ${t.summary}`).join("\n")}\n\n### Research Gaps & Strategic Directives\n${gen.researchGapsHighlighted.map(g => `- ${g}`).join("\n")}`;
+  const sanitizedContent = sanitizeCrossDomainDrift(rawContent, schema);
+  const audit = validateDomainConsistency(sanitizedContent, schema);
+
+  const verifiedCitations = schema.verifiedBibliographicalAnchors.map(anchor => ({
+    paperId: anchor.paperId,
+    citationText: `${anchor.authors} (${anchor.year}). ${anchor.title}. ${anchor.venue}. DOI: ${anchor.doi}`
+  }));
+
   const litReview: LiteratureReview = {
     id: `litrev-${Date.now()}`,
     title: `Automated Systematic Review: ${targetTopic}`,
-    domain: gen.litReviewDomain,
+    domain: schema.domainName,
     themes: gen.themes,
     methodologyComparisons: gen.methodologyComparisons,
     consensusAndDisagreements: gen.consensusAndDisagreements,
     researchGapsHighlighted: gen.researchGapsHighlighted,
-    fullMarkdownContent: `# Systematic Literature Review: ${targetTopic}\n\n## Executive Summary\nThis automated systematic review synthesizes peer-reviewed literature for **${targetTopic}** within the domain of **${gen.litReviewDomain}**.\n\n### Key Synthesis Themes\n${gen.themes.map((t, idx) => `${idx + 1}. **${t.themeName}**: ${t.summary}`).join("\n")}\n\n### Research Gaps & Strategic Directives\n${gen.researchGapsHighlighted.map(g => `- ${g}`).join("\n")}`,
-    citations: [
-      { paperId: "p1", citationText: "Zhuang, Y., et al. (2025). Graph of AI Ideas: Knowledge Graphs and LLMs for AI Research. Nature Machine Intelligence." },
-      { paperId: "p2", citationText: "Zhao, H., et al. (2026). AGENTiGraph: Multi-Agent Frameworks for Scientific Discovery. Journal of AI & Science." }
-    ],
-    createdAt: new Date().toISOString()
+    fullMarkdownContent: sanitizedContent,
+    citations: verifiedCitations,
+    createdAt: new Date().toISOString(),
+    consistencyScore: audit.consistencyScore,
+    domainCategory: schema.category,
+    domainLockApplied: domainLockEnabled !== false
   };
 
   return res.json(litReview);
@@ -569,21 +597,27 @@ router.post("/draft-manuscript", requireAuth, async (req, res) => {
     investorName, 
     agencyCode, 
     targetBudget, 
-    investorFocus 
+    investorFocus,
+    domainLockEnabled
   } = req.body;
 
   const paperTitle = title || "Topological Quantum Decoders for Rapid Physical State Search";
-  const funderAgency = investorName || venue || "NSF Quantum & Physical Sciences Division";
+  const schema = classifyTopicDomain(paperTitle);
+
+  const funderAgency = investorName || venue || `NSF ${schema.domainName} Program`;
   const funderCode = agencyCode || "NSF-QPS-2026";
   const budget = targetBudget || "$2,500,000";
 
   const ai = getAiClient(req);
   if (ai) {
     try {
-      const prompt = `You are a distinguished scientific researcher and grant reviewer. Draft a methodologically sound, domain-accurate research manuscript and grant proposal for the following topic: "${paperTitle}".
+      const prompt = `${schema.systemInstructionConstraint}
+
+You are a distinguished scientific researcher and grant reviewer. Draft a methodologically sound, domain-accurate research manuscript and grant proposal for the following topic: "${paperTitle}".
+Target Domain: ${schema.domainName}.
 Target Funder: ${funderAgency} (${funderCode}), Budget: ${budget}. Investor Focus: ${investorFocus || "Scientific Innovation"}.
 
-IMPORTANT REQUIREMENT: Ensure all sections (abstract, introduction, relatedWork, methodology, discussion) are 100% methodologically valid and theoretically consistent with the SPECIFIC discipline of "${paperTitle}". DO NOT mix unrelated fields (e.g. do NOT include cryogenic temperatures, spectroscopic devices, or chemical reagents if the topic is about AI chatbots, computer science, psychology, or law).
+IMPORTANT REQUIREMENT: Ensure all sections (abstract, introduction, relatedWork, methodology, discussion) are 100% methodologically valid and theoretically consistent with the SPECIFIC discipline of "${schema.domainName}". DO NOT mix unrelated fields.
 
 Return strictly a valid JSON object matching this schema:
 {
@@ -605,19 +639,42 @@ Return strictly a valid JSON object matching this schema:
 
       if (response.text) {
         const parsed = JSON.parse(response.text);
+        
+        let abstract = sanitizeCrossDomainDrift(parsed.abstract || "", schema);
+        let introduction = sanitizeCrossDomainDrift(parsed.introduction || "", schema);
+        let methodology = sanitizeCrossDomainDrift(parsed.methodology || "", schema);
+        let discussion = sanitizeCrossDomainDrift(parsed.discussion || "", schema);
+
+        const fullText = `${abstract} ${introduction} ${methodology} ${discussion}`;
+        const audit = validateDomainConsistency(fullText, schema);
+
+        const verifiedRefs = schema.verifiedBibliographicalAnchors.map(anchor =>
+          `[VERIFIED ANCHOR] ${anchor.authors} (${anchor.year}). ${anchor.title}. ${anchor.venue}. DOI: ${anchor.doi}`
+        );
+
         const draft: DraftedManuscript = {
           id: `draft-${Date.now()}`,
           title: paperTitle,
           targetVenueOrGrant: `${funderAgency} (${funderCode})`,
           authors: ["Dr. Elena Rostova", "Prof. Marcus Vance", "FA-CDGRF Multi-Agent Co-Author Engine"],
-          abstract: parsed.abstract || "",
-          introduction: parsed.introduction || "",
+          abstract,
+          introduction,
           relatedWork: parsed.relatedWork || "",
-          methodology: parsed.methodology || "",
-          discussion: parsed.discussion || "",
+          methodology,
+          discussion,
           grantProposalSection: `GRANT PROPOSAL SPECIFICATIONS:\nTarget Agency / Funder: ${funderAgency}\nProgram Code: ${funderCode}\nRequested Budget: ${budget} over 36 Months.\nInvestor Strategic Focus: ${investorFocus || "High-risk, high-reward interdisciplinary scientific discovery and experimental translation."}\nBroader Impact: Accelerates foundational research timeline, provides open data access, and validates cross-domain theoretical frameworks.`,
-          referencesList: parsed.referencesList || ["[1] Zhuang et al. Graph of AI Ideas (2025)", "[2] Zhao et al. AGENTiGraph (2026)"],
-          generatedAt: new Date().toISOString()
+          referencesList: verifiedRefs,
+          generatedAt: new Date().toISOString(),
+          consistencyScore: audit.consistencyScore,
+          domainCategory: schema.category,
+          domainLockApplied: domainLockEnabled !== false,
+          consistencyDetails: {
+            status: audit.status,
+            details: audit.details,
+            flaggedOutofDomainTerms: audit.flaggedOutofDomainTerms,
+            matchedKeywords: audit.matchedDomainKeywords,
+            verifiedAnchorsInjected: schema.verifiedBibliographicalAnchors.length
+          }
         };
         return res.json(draft);
       }
@@ -628,22 +685,41 @@ Return strictly a valid JSON object matching this schema:
 
   // Fallback to domain-aware generator
   const gen = getDomainGenerator(paperTitle);
+  const abstract = sanitizeCrossDomainDrift(gen.manuscript.abstract, schema);
+  const introduction = sanitizeCrossDomainDrift(gen.manuscript.introduction, schema);
+  const methodology = sanitizeCrossDomainDrift(gen.manuscript.methodology, schema);
+  const discussion = sanitizeCrossDomainDrift(gen.manuscript.discussion, schema);
+
+  const fullText = `${abstract} ${introduction} ${methodology} ${discussion}`;
+  const audit = validateDomainConsistency(fullText, schema);
+
+  const verifiedRefs = schema.verifiedBibliographicalAnchors.map(anchor =>
+    `[VERIFIED ANCHOR] ${anchor.authors} (${anchor.year}). ${anchor.title}. ${anchor.venue}. DOI: ${anchor.doi}`
+  );
+
   const draft: DraftedManuscript = {
     id: `draft-${Date.now()}`,
     title: paperTitle,
     targetVenueOrGrant: `${funderAgency} (${funderCode})`,
     authors: ["Dr. Elena Rostova", "Prof. Marcus Vance", "FA-CDGRF Multi-Agent Co-Author Engine"],
-    abstract: gen.manuscript.abstract,
-    introduction: gen.manuscript.introduction,
+    abstract,
+    introduction,
     relatedWork: gen.manuscript.relatedWork,
-    methodology: gen.manuscript.methodology,
-    discussion: gen.manuscript.discussion,
+    methodology,
+    discussion,
     grantProposalSection: `GRANT PROPOSAL SPECIFICATIONS:\nTarget Agency / Funder: ${funderAgency}\nProgram Code: ${funderCode}\nRequested Budget: ${budget} over 36 Months.\nInvestor Strategic Focus: ${investorFocus || "High-risk, high-reward interdisciplinary scientific discovery and experimental translation."}\nBroader Impact: Accelerates foundational research timeline, provides open data access, and validates cross-domain theoretical frameworks.`,
-    referencesList: [
-      "[1] Zhuang et al. Graph of AI Ideas: Leveraging Knowledge Graphs and LLMs for AI Research Idea Generation (2025).",
-      "[2] Zhao et al. AGENTiGraph: A Multi-Agent Knowledge Graph Framework for Interactive LLM Chatbots (2026)."
-    ],
-    generatedAt: new Date().toISOString()
+    referencesList: verifiedRefs,
+    generatedAt: new Date().toISOString(),
+    consistencyScore: audit.consistencyScore,
+    domainCategory: schema.category,
+    domainLockApplied: domainLockEnabled !== false,
+    consistencyDetails: {
+      status: audit.status,
+      details: audit.details,
+      flaggedOutofDomainTerms: audit.flaggedOutofDomainTerms,
+      matchedKeywords: audit.matchedDomainKeywords,
+      verifiedAnchorsInjected: schema.verifiedBibliographicalAnchors.length
+    }
   };
 
   return res.json(draft);
@@ -651,15 +727,19 @@ Return strictly a valid JSON object matching this schema:
 
 // 3. Design Comprehensive Experiment Plan
 router.post("/design-experiment", requireAuth, async (req, res) => {
-  const { hypothesisId, hypothesisTitle } = req.body;
+  const { hypothesisId, hypothesisTitle, domainLockEnabled } = req.body;
   const targetTitle = hypothesisTitle || "Topological Stabilizer Mapping for Physical Systems";
+  const schema = classifyTopicDomain(targetTitle);
 
   const ai = getAiClient(req);
   if (ai) {
     try {
-      const prompt = `You are an expert principal investigator and lab director. Design a comprehensive, methodologically rigorous, domain-accurate experimental protocol for the following hypothesis/topic: "${targetTitle}".
+      const prompt = `${schema.systemInstructionConstraint}
 
-CRITICAL REQUIREMENT: Ensure the methodology, independent variables, dependent variables, controls, required resources (equipment/reagents/compute/datasets), and safety considerations match the EXACT scientific domain of "${targetTitle}". DO NOT mix unrelated fields (e.g. do NOT include cryogenic temperatures, particle accelerators, or chemical reagents if the study is about AI chatbots, computer science, psychology, or software!).
+You are an expert principal investigator and lab director. Design a comprehensive, methodologically rigorous, domain-accurate experimental protocol for the following hypothesis/topic: "${targetTitle}".
+Target Domain: ${schema.domainName}.
+
+CRITICAL REQUIREMENT: Ensure the methodology, independent variables, dependent variables, controls, required resources (equipment/reagents/compute/datasets), and safety considerations match the EXACT scientific domain of "${schema.domainName}".
 
 Return strictly a valid JSON object matching this schema:
 {
@@ -689,19 +769,35 @@ Return strictly a valid JSON object matching this schema:
 
       if (response.text) {
         const parsed = JSON.parse(response.text);
+        
+        let methodology = sanitizeCrossDomainDrift(parsed.suggestedMethodology || "", schema);
+        let independentVars = (parsed.independentVariables || []).map((v: string) => sanitizeCrossDomainDrift(v, schema));
+        let dependentVars = (parsed.dependentVariables || []).map((v: string) => sanitizeCrossDomainDrift(v, schema));
+
+        const audit = validateDomainConsistency(`${methodology} ${independentVars.join(" ")} ${dependentVars.join(" ")}`, schema);
+
         const plan: ExperimentPlan = {
           id: `exp-${Date.now()}`,
           hypothesisId: hypothesisId || "hypo-001",
           hypothesisTitle: targetTitle,
-          suggestedMethodology: parsed.suggestedMethodology || "",
-          independentVariables: parsed.independentVariables || [],
-          dependentVariables: parsed.dependentVariables || [],
+          suggestedMethodology: methodology,
+          independentVariables: independentVars,
+          dependentVariables: dependentVars,
           recommendedControls: parsed.recommendedControls || [],
-          requiredResources: parsed.requiredResources || [],
+          requiredResources: parsed.requiredResources || schema.validPhysicalVariablesAndMetrics.map(m => ({ item: m, category: 'Compute' as const, estimatedCost: '$5,000' })),
           totalEstimatedCostUSD: parsed.totalEstimatedCostUSD || "$45,000",
           estimatedDurationMonths: parsed.estimatedDurationMonths || 6,
           evaluationMetrics: parsed.evaluationMetrics || [],
-          safetyAndEthicalConsiderations: parsed.safetyAndEthicalConsiderations || "Standard safety protocols observed."
+          safetyAndEthicalConsiderations: parsed.safetyAndEthicalConsiderations || "Standard safety protocols observed.",
+          consistencyScore: audit.consistencyScore,
+          domainCategory: schema.category,
+          domainLockApplied: domainLockEnabled !== false,
+          validatedPhysicalConstants: schema.validPhysicalVariablesAndMetrics,
+          consistencyDetails: {
+            status: audit.status,
+            details: audit.details,
+            flaggedOutofDomainTerms: audit.flaggedOutofDomainTerms
+          }
         };
         return res.json(plan);
       }
@@ -712,19 +808,34 @@ Return strictly a valid JSON object matching this schema:
 
   // Fallback to domain-aware generator
   const gen = getDomainGenerator(targetTitle);
+  const methodology = sanitizeCrossDomainDrift(gen.experiment.methodology, schema);
+  const independentVars = gen.experiment.independentVariables.map(v => sanitizeCrossDomainDrift(v, schema));
+  const dependentVars = gen.experiment.dependentVariables.map(v => sanitizeCrossDomainDrift(v, schema));
+
+  const audit = validateDomainConsistency(`${methodology} ${independentVars.join(" ")} ${dependentVars.join(" ")}`, schema);
+
   const plan: ExperimentPlan = {
     id: `exp-${Date.now()}`,
     hypothesisId: hypothesisId || "hypo-001",
     hypothesisTitle: targetTitle,
-    suggestedMethodology: gen.experiment.methodology,
-    independentVariables: gen.experiment.independentVariables,
-    dependentVariables: gen.experiment.dependentVariables,
+    suggestedMethodology: methodology,
+    independentVariables: independentVars,
+    dependentVariables: dependentVars,
     recommendedControls: gen.experiment.recommendedControls,
     requiredResources: gen.experiment.requiredResources,
     totalEstimatedCostUSD: "$45,000",
     estimatedDurationMonths: 6,
     evaluationMetrics: gen.experiment.metrics,
-    safetyAndEthicalConsiderations: gen.experiment.safety
+    safetyAndEthicalConsiderations: gen.experiment.safety,
+    consistencyScore: audit.consistencyScore,
+    domainCategory: schema.category,
+    domainLockApplied: domainLockEnabled !== false,
+    validatedPhysicalConstants: schema.validPhysicalVariablesAndMetrics,
+    consistencyDetails: {
+      status: audit.status,
+      details: audit.details,
+      flaggedOutofDomainTerms: audit.flaggedOutofDomainTerms
+    }
   };
 
   return res.json(plan);

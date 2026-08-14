@@ -1,5 +1,6 @@
 import { GraphNode, GraphLink, Hypothesis, AgentName } from "../types.js";
 import { GoogleGenAI } from "@google/genai";
+import { classifyTopicDomain } from "../config/domainTemplates.js";
 
 export function getAiClient(req?: any) {
   // Check if end-user supplied their own Gemini API key via request header
@@ -269,6 +270,7 @@ export function createSimulatedHypothesis(query: string, log: (agent: AgentName,
 
   const qLower = query.toLowerCase();
   const titleWords = query.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  const computedDomain = classifyTopicDomain(query).domainName;
 
   if (qLower.includes("quantum") || qLower.includes("fold") || qLower.includes("error")) {
     return {
@@ -290,9 +292,10 @@ export function createSimulatedHypothesis(query: string, log: (agent: AgentName,
       noveltyScore: 0.95,
       impactScore: 0.90,
       status: "draft",
+      domain: computedDomain,
       createdAt: new Date().toISOString()
     };
-  } else if (qLower.includes("alzheimer") || qLower.includes("gene") || qLower.includes("neuro")) {
+  } else if (qLower.includes("alzheimer") || qLower.includes("gene") || qLower.includes("neuro") || qLower.includes("cancer") || qLower.includes("drug")) {
     return {
       id: `hypo-${Date.now()}`,
       title: `Therapeutic Pathway Synthesis for ${titleWords}`,
@@ -312,6 +315,7 @@ export function createSimulatedHypothesis(query: string, log: (agent: AgentName,
       noveltyScore: 0.78,
       impactScore: 0.94,
       status: "draft",
+      domain: computedDomain,
       createdAt: new Date().toISOString()
     };
   } else {
@@ -334,6 +338,7 @@ export function createSimulatedHypothesis(query: string, log: (agent: AgentName,
       noveltyScore: 0.92,
       impactScore: 0.88,
       status: "draft",
+      domain: computedDomain,
       createdAt: new Date().toISOString()
     };
   }

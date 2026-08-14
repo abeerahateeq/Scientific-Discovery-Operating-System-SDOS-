@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { ScientificPaper } from "../types";
+import { classifyTopicDomain } from "../config/domainTemplates";
 import { 
   FileText, 
   Plus, 
@@ -120,6 +121,15 @@ export default function LiteratureIngest({
     e.preventDefault();
     if (!title || !abstract) return;
 
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    const domainCheck = classifyTopicDomain(title + " " + abstract);
+    if (!domainCheck.isAllowedDomain || domainCheck.isSupported === false) {
+      setErrorMsg("Domain not supported: Please provide a relevant document.");
+      return;
+    }
+
     try {
       await onIngest({
         title,
@@ -140,28 +150,41 @@ export default function LiteratureIngest({
 
       setSuccessMsg("Document ingested successfully! Running AI Knowledge Extraction...");
       setTimeout(() => setSuccessMsg(""), 5000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      if (err.message && err.message.includes("Domain not supported")) {
+        setErrorMsg("Domain not supported: Please provide a relevant document.");
+      } else {
+        setErrorMsg(err.message || "Failed to ingest paper.");
+      }
     }
   };
 
   const fillSamplePaper = () => {
-    setTitle("The Role of Quantum Entanglement in Mitigating Macromolecular Phase Separation");
-    setAuthors("Dr. Evelyn Vance, Prof. Alan Turing Jr.");
-    setJournal("Journal of Interdisciplinary Science");
+    setTitle("Quantitative Microplastic and Nanoplastic Abundance in Coastal Sediments via Automated µFTIR");
+    setAuthors("Dr. Evelyn Vance, Prof. L. Garrison");
+    setJournal("Environmental Science & Technology");
     setYear("2026");
-    setAbstract("Phase separation of macromolecular polymers underpins membraneless organelle formation inside cells. This study explores how simulated quantum entanglement states, implemented on topological stabilizer lattices, can efficiently predict the critical phase bounds of hydrophobic polypeptide chains. Our model maps entanglement states to localized fold configurations, bypassing classical optimization bounds.");
+    setAbstract("Quantitative analysis of secondary microplastics (1 µm – 5 mm) and weathered nanoplastics in benthic marine sediments. Using focal plane array µFTIR spectroscopy and pyrolysis-GC-MS, we evaluated particle abundance, polymer degradation, and heavy metal adsorption kinetics across coastal estuaries.");
   };
 
-  // PDF Upload Handlers
-  const handlePdfUpload = async (file: File) => {
-    if (!file) return;
-    if (file.type !== "application/pdf") {
-      setErrorMsg("Invalid file type. Only standard scientific PDF files are supported.");
+  // Document Upload Handlers (PDF & Word DOCX/DOC)
+  const handleDocumentUpload = async (file: File) => {
+    if (!file || isUploading) return;
+    
+    const fileExt = file.name.split(".").pop()?.toLowerCase() || "";
+    const isSupported = ["pdf", "docx", "doc", "txt"].includes(fileExt) || 
+      file.type === "application/pdf" || 
+      file.type.includes("word") || 
+      file.type.includes("officedocument") ||
+      file.type.includes("text");
+
+    if (!isSupported) {
+      setErrorMsg("Invalid file type. Supported formats: Adobe PDF (.pdf), Microsoft Word (.docx, .doc), and Text (.txt).");
       return;
     }
 
-    // Reset DOM file input element value to clear browser file buffer reference
+    // Reset DOM file input element value immediately
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -179,16 +202,17 @@ export default function LiteratureIngest({
     setHasRestoredDraft(false);
     localStorage.removeItem("sdos_lit_ingest_autosave");
 
+    const formatLabel = fileExt === "docx" || fileExt === "doc" ? "Word DOCX/DOC" : "PDF";
     setUploadLogs([
       "Resetting initial file ingestion buffer for new document processing...",
-      "Connecting to PDF Parser pipeline (PyMuPDF / GROBID core emulate)..."
+      `Connecting to ${formatLabel} Extraction Pipeline for file "${file.name}"...`
     ]);
 
     const formData = new FormData();
-    formData.append("pdf", file);
+    formData.append("document", file);
 
     try {
-      const response = await fetch("/api/papers/upload-pdf", {
+      const response = await fetch("/api/papers/upload-document", {
         method: "POST",
         body: formData
       });
@@ -205,7 +229,13 @@ export default function LiteratureIngest({
         setUploadLogs(prev => [...prev, "Completing metadata structuring...", "Linking bibliography references to graph index..."]);
       }
 
-      setSuccessMsg(`"${data.paper.title}" successfully ingested and extracted.`);
+      const domainName = data.paper?.domain || "Custom Domain";
+      if (data.unmatchedNotice) {
+        setSuccessMsg(`"${data.paper.title}" ingested successfully! Dynamically classified as "${domainName}" (No quantum fallback applied).`);
+      } else {
+        setSuccessMsg(`"${data.paper.title}" successfully ingested and indexed into [${domainName}].`);
+      }
+
       if (data.paper && data.paper.id) {
         setNewlyUploadedId(data.paper.id);
       }
@@ -224,7 +254,7 @@ export default function LiteratureIngest({
       }
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || "Failed to complete PDF ingestion pipeline.");
+      setErrorMsg(err.message || "Failed to complete document ingestion pipeline.");
       setUploadLogs(prev => [...prev, "CRITICAL ERROR: Document extraction failed."]);
     } finally {
       setIsUploading(false);
@@ -429,9 +459,11 @@ export default function LiteratureIngest({
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOver(false);
+    if (isUploading) return;
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handlePdfUpload(e.dataTransfer.files[0]);
+      handleDocumentUpload(e.dataTransfer.files[0]);
     }
   };
 
@@ -456,7 +488,7 @@ export default function LiteratureIngest({
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            PDF
+            PDF / Word
           </button>
           <button
             onClick={() => { setDragOver(false); setIngestMode("manual"); }}
@@ -501,11 +533,11 @@ export default function LiteratureIngest({
           </div>
         )}
 
-        {/* MODE A: PDF Upload Pipeline */}
+        {/* MODE A: Document (PDF / Word) Upload Pipeline */}
         {ingestMode === "pdf" && (
           <div className="flex flex-col gap-3">
             <p className="text-slate-500 font-sans leading-relaxed text-[10px]">
-              Upload pre-print or research papers. Our high-density ingestion pipeline strips raw text, reconstructs schemas, parses reference citations, and indexes entities.
+              Upload scientific papers in <strong>PDF</strong> or <strong>Word Document (.docx / .doc)</strong> format. Our multi-engine pipeline parses structural body text, extracts bibliographies, and dynamically classifies domains.
             </p>
 
             {/* Drag and Drop Box */}
@@ -513,26 +545,38 @@ export default function LiteratureIngest({
               onDragOver={onDragOver}
               onDragLeave={onDragLeave}
               onDrop={onDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-lg p-5 flex flex-col items-center justify-center gap-2.5 cursor-pointer transition-all ${
-                dragOver
-                  ? "border-emerald-400 bg-emerald-500/5"
-                  : "border-slate-800 bg-[#07080A] hover:border-slate-700"
+              onClick={() => {
+                if (!isUploading) {
+                  fileInputRef.current?.click();
+                }
+              }}
+              className={`border-2 border-dashed rounded-lg p-5 flex flex-col items-center justify-center gap-2.5 transition-all ${
+                isUploading
+                  ? "border-emerald-500/50 bg-emerald-500/10 cursor-not-allowed"
+                  : dragOver
+                  ? "border-emerald-400 bg-emerald-500/5 cursor-pointer"
+                  : "border-slate-800 bg-[#07080A] hover:border-slate-700 cursor-pointer"
               }`}
             >
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf"
-                onChange={(e) => e.target.files?.[0] && handlePdfUpload(e.target.files[0])}
+                accept=".pdf,.docx,.doc,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+                onChange={(e) => {
+                  const selectedFile = e.target.files?.[0];
+                  e.target.value = ""; // Immediately reset file input value
+                  if (selectedFile && !isUploading) {
+                    handleDocumentUpload(selectedFile);
+                  }
+                }}
                 className="hidden"
               />
               <div className="p-2 rounded-full bg-slate-900 border border-slate-850">
                 <Upload className={`w-5 h-5 ${isUploading ? "text-emerald-400 animate-bounce" : "text-slate-500"}`} />
               </div>
               <div className="text-center flex flex-col gap-0.5">
-                <span className="text-slate-300 font-bold">Drag & Drop PDF here</span>
-                <span className="text-slate-600 text-[10px] font-sans">or click to browse local files</span>
+                <span className="text-slate-300 font-bold">Drag & Drop PDF or Word (.docx) here</span>
+                <span className="text-slate-500 text-[10px] font-sans">Supports .pdf, .docx, .doc, .txt files</span>
               </div>
             </div>
 
@@ -904,7 +948,11 @@ export default function LiteratureIngest({
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                    <span className="flex items-center gap-1 text-[8px] font-mono font-bold text-sky-400 bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 rounded uppercase">
+                      {paper.domain || classifyTopicDomain(paper.title + " " + paper.abstract).domainName}
+                    </span>
+
                     {paper.status === "analyzed" ? (
                       <span className="flex items-center gap-1 text-[8px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded uppercase">
                         <CheckCircle className="w-2.5 h-2.5" />

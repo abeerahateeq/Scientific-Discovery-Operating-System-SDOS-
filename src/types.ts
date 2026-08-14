@@ -11,6 +11,7 @@ export interface ScientificPaper {
   entitiesExtracted: string[];
   references?: { title: string; authors: string; journal: string; year?: number }[];
   sourceType?: 'user_uploaded' | 'system_discovered';
+  domain?: string;
 }
 
 export type NodeGroup = 
@@ -143,7 +144,7 @@ export interface Hypothesis {
   feedbackStatus?: 'success' | 'failure' | 'modification';
   feedbackNotes?: string;
   feedbackTimestamp?: string;
-  domain?: 'Medicine' | 'Materials' | 'Quantum' | 'Genomics' | 'Astrophysics';
+  domain?: string;
 }
 
 export interface ProvenanceItem {
@@ -233,6 +234,9 @@ export interface LiteratureReview {
   fullMarkdownContent: string;
   citations: { paperId: string; citationText: string }[];
   createdAt: string;
+  consistencyScore?: number;
+  domainCategory?: string;
+  domainLockApplied?: boolean;
 }
 
 export interface DraftedManuscript {
@@ -248,6 +252,16 @@ export interface DraftedManuscript {
   grantProposalSection?: string;
   referencesList: string[];
   generatedAt: string;
+  consistencyScore?: number;
+  domainCategory?: string;
+  domainLockApplied?: boolean;
+  consistencyDetails?: {
+    status: 'Verified Aligned' | 'Minor Drift Corrected' | 'Inconsistency Flagged';
+    details: string;
+    flaggedOutofDomainTerms?: string[];
+    matchedKeywords?: string[];
+    verifiedAnchorsInjected?: number;
+  };
 }
 
 export interface ExperimentPlan {
@@ -263,6 +277,15 @@ export interface ExperimentPlan {
   estimatedDurationMonths: number;
   evaluationMetrics: string[];
   safetyAndEthicalConsiderations: string;
+  consistencyScore?: number;
+  domainCategory?: string;
+  domainLockApplied?: boolean;
+  validatedPhysicalConstants?: string[];
+  consistencyDetails?: {
+    status: 'Verified Aligned' | 'Minor Drift Corrected' | 'Inconsistency Flagged';
+    details: string;
+    flaggedOutofDomainTerms?: string[];
+  };
 }
 
 export interface CustomResearchAgent {
@@ -288,6 +311,57 @@ export interface ReproducibleNotebookPackage {
   datasetSources: { name: string; url: string; size: string }[];
   dockerfileContent: string;
   reproductionCommand: string;
+}
+
+export interface SpssVariable {
+  name: string;
+  label: string;
+  type: 'Numeric' | 'String';
+  measure: 'Scale' | 'Ordinal' | 'Nominal';
+  decimals: number;
+  missing?: string;
+  values?: { code: number | string; label: string }[];
+}
+
+export interface SpssOutputTable {
+  title: string;
+  headers: string[];
+  rows: (string | number)[][];
+  footnote?: string;
+}
+
+export interface SpssAnalysisPackage {
+  id: string;
+  title: string;
+  domain: string;
+  hypothesisTitle?: string;
+  analysisType: 
+    | 'Descriptives' 
+    | 'Independent_Samples_tTest' 
+    | 'OneWay_ANOVA' 
+    | 'Factorial_ANOVA'
+    | 'Multiple_Linear_Regression' 
+    | 'Pearson_Spearman_Correlation' 
+    | 'Reliability_Cronbach_Alpha' 
+    | 'Chi_Square_Independence' 
+    | 'PCA_Factor_Analysis';
+  dataset: {
+    variables: SpssVariable[];
+    rows: Record<string, any>[];
+  };
+  spssSyntaxScript: string;
+  outputSummary: {
+    testStatistic: string;
+    pValue: number;
+    significanceFormatted: string;
+    effectSize: string; // e.g. "Cohen's d = 0.84" or "Partial η² = 0.28" or "R² = 0.74"
+    confidenceInterval: string;
+    apaFormatString: string;
+    tables: SpssOutputTable[];
+    interpretation: string;
+    recommendation: string;
+  };
+  generatedDate: string;
 }
 
 export type AgentName =

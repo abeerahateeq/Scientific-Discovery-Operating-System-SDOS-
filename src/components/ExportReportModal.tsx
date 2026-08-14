@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Download, FileText, Table, Check, X, ShieldCheck, FileJson, Loader2 } from 'lucide-react';
 import { Hypothesis, GraphNode, GraphLink } from '../types';
 import { exportDashboardToCSV, exportDashboardToPDF, DashboardStats } from '../utils/exportReport';
+import { classifyTopicDomain } from '../config/domainTemplates';
 
 interface ExportReportModalProps {
   isOpen: boolean;
@@ -74,7 +75,7 @@ export default function ExportReportModal({
           hypotheses: hypotheses.map(h => ({
             id: h.id,
             title: h.title,
-            domain: h.domain || "Quantum Biophysics",
+            domain: h.domain || classifyTopicDomain(h.title + " " + (h.query || "")).domainName,
             status: h.status,
             noveltyScore: h.noveltyScore,
             confidence: h.confidence
