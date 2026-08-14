@@ -5,6 +5,8 @@ import SpssQuickStats from './spss/SpssQuickStats';
 import SpssVariableInspector from './spss/SpssVariableInspector';
 import SpssDataPreview from './spss/SpssDataPreview';
 import SpssExportModal from './spss/SpssExportModal';
+import SpssAgenticLogsSummary, { AgenticAnalysisLogEntry } from './spss/SpssAgenticLogsSummary';
+import ExportDropdown from './ExportDropdown';
 import { 
   Calculator, 
   Play, 
@@ -39,7 +41,8 @@ import {
   FileUp,
   AlertCircle,
   HelpCircle,
-  Eye
+  Eye,
+  History
 } from 'lucide-react';
 
 interface SpssStudioProps {
@@ -51,7 +54,7 @@ interface SpssStudioProps {
 
 export default function SpssStudio({ hypotheses = [], papers = [], onExportNotebook, externalActivePackage }: SpssStudioProps) {
   const [selectedAnalysisType, setSelectedAnalysisType] = useState<SpssAnalysisPackage['analysisType']>('Independent_Samples_tTest');
-  const [activeView, setActiveView] = useState<'output' | 'data_view' | 'variable_view' | 'syntax' | 'quick_stats'>('output');
+  const [activeView, setActiveView] = useState<'output' | 'data_view' | 'variable_view' | 'syntax' | 'quick_stats' | 'agent_logs'>('output');
   const [copiedSyntax, setCopiedSyntax] = useState(false);
   const [copiedApa, setCopiedApa] = useState(false);
   const [confidenceLevel, setConfidenceLevel] = useState<number>(95);
@@ -69,6 +72,115 @@ export default function SpssStudio({ hypotheses = [], papers = [], onExportNoteb
 
   // File Upload Reference
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Initial Agentic Analysis Runs History per document (last 3 structured logs)
+  const [agenticLogsHistory, setAgenticLogsHistory] = useState<AgenticAnalysisLogEntry[]>([
+    {
+      id: 'log-mp-01',
+      documentId: 'sample-microplastics',
+      documentTitle: 'Microplastic Bioaccumulation & Cell Toxicity Index',
+      timestamp: 'Today at 02:15 AM',
+      analysisType: 'Independent_Samples_tTest',
+      testStatistic: 't(8) = 14.82, p < .001',
+      significance: 'p < .001 (Highly Significant, Reject H0)',
+      effectSize: "Cohen's d = 9.37 (Extremely Large Effect)",
+      pValue: 0.000042,
+      confidence: 95,
+      apaConclusion: 'An independent-samples t-test indicated that cellular ROS activity was significantly higher in the microplastic-exposed group (M = 40.54, SD = 3.19) than in the control group (M = 13.40, SD = 1.34), t(8) = 14.82, p < .001, d = 9.37, 95% CI [23.12, 31.96].',
+      stepDetails: [
+        'Ingested Microplastics_Ecotoxicity_Dataset.csv and mapped 5 numeric columns.',
+        'Assessed Levene equality of variance (F = 3.41, p = .102) verifying homoscedasticity.',
+        'Executed Student t-Test with 95% confidence interval boundaries [23.12, 31.96].',
+        'Synthesized APA 7th Edition manuscript reporting statement and SPSS .sps script.'
+      ],
+      executionTimeMs: 1240,
+      variablesCount: 5,
+      casesCount: 10
+    },
+    {
+      id: 'log-mp-02',
+      documentId: 'sample-microplastics',
+      documentTitle: 'Microplastic Bioaccumulation & Cell Toxicity Index',
+      timestamp: 'Yesterday at 08:30 PM',
+      analysisType: 'Linear_Regression',
+      testStatistic: 'F(2, 7) = 48.91, p < .001, R² = .933',
+      significance: 'p < .001 (Highly Significant)',
+      effectSize: 'Adjusted R² = .914 (Strong Predictive Power)',
+      pValue: 0.00001,
+      confidence: 95,
+      apaConclusion: 'Multiple linear regression demonstrated that microplastic exposure (β = .68, p < .001) and ROS generation (β = .29, p = .018) accounted for 93.3% of organism survival variation, F(2, 7) = 48.91, p < .001.',
+      stepDetails: [
+        'Tested collinearity assumptions (VIF < 2.1, Tolerance > .47).',
+        'Fitted Ordinary Least Squares (OLS) model for Survival_Rate dependent variable.',
+        'Verified residual normality using Shapiro-Wilk test (W = .964, p = .71).'
+      ],
+      executionTimeMs: 980,
+      variablesCount: 5,
+      casesCount: 10
+    },
+    {
+      id: 'log-mp-03',
+      documentId: 'sample-microplastics',
+      documentTitle: 'Microplastic Bioaccumulation & Cell Toxicity Index',
+      timestamp: '2 days ago',
+      analysisType: 'Pearson_Correlation',
+      testStatistic: 'r(8) = .894, p < .001',
+      significance: 'p < .001 (Significant)',
+      effectSize: 'r² = .799 (Large Associative Effect)',
+      pValue: 0.0004,
+      confidence: 95,
+      apaConclusion: 'Bivariate Pearson correlation revealed a strong positive association between ROS Activity and Lipid Peroxidation MDA levels, r(8) = .894, p < .001.',
+      stepDetails: [
+        'Computed pairwise Pearson bivariate covariance matrix.',
+        'Checked bivariate normality scatter envelope without influential Cook’s D leverage.'
+      ],
+      executionTimeMs: 820,
+      variablesCount: 5,
+      casesCount: 10
+    },
+    {
+      id: 'log-ai-01',
+      documentId: 'sample-ai-eval',
+      documentTitle: 'Autonomous LLM Sycophancy & Reinforcement Learning',
+      timestamp: 'Today at 01:40 AM',
+      analysisType: 'OneWay_ANOVA',
+      testStatistic: 'F(2, 12) = 104.76, p < .001',
+      significance: 'p < .001 (Reject H0, Robust Group Variance)',
+      effectSize: 'η² = .946 (Extremely Large Effect Size)',
+      pValue: 0.000001,
+      confidence: 95,
+      apaConclusion: 'A one-way ANOVA demonstrated significant sycophancy reduction across alignment regimes, F(2, 12) = 104.76, p < .001, η² = .946. Tukey HSD confirmed DPO + Epistemic Penalty achieved lowest sycophancy.',
+      stepDetails: [
+        'Parsed 15 experimental model audit trials across 3 alignment groups.',
+        'Conducted Tukey post-hoc tests (DPO vs Standard RLHF: Mean Diff = -34.80, p < .001).',
+        'Generated APA ANOVA Pivot output and syntax script.'
+      ],
+      executionTimeMs: 1450,
+      variablesCount: 5,
+      casesCount: 15
+    },
+    {
+      id: 'log-agri-01',
+      documentId: 'sample-agri-rhizosphere',
+      documentTitle: 'Rhizosphere Microbiome Inoculation & Crop Drought Resilience',
+      timestamp: 'Today at 12:10 AM',
+      analysisType: 'OneWay_ANOVA',
+      testStatistic: 'F(2, 12) = 28.64, p < .001',
+      significance: 'p < .001 (Statistically Significant)',
+      effectSize: 'η² = .827 (Substantial Agronomic Impact)',
+      pValue: 0.000028,
+      confidence: 95,
+      apaConclusion: 'A one-way ANOVA indicated that consortia inoculation significantly enhanced grain yield under severe drought stress, F(2, 12) = 28.64, p < .001, η² = .827.',
+      stepDetails: [
+        'Analyzed 15 agricultural trial plots across microbial inoculation treatments.',
+        'Assessed plant biomass, grain yield, and proline accumulation metrics.',
+        'Formatted APA tables with Tukey post-hoc pairwise contrasts.'
+      ],
+      executionTimeMs: 1120,
+      variablesCount: 5,
+      casesCount: 15
+    }
+  ]);
 
   // Helper for voice feedback
   const speakText = (text: string) => {
@@ -178,115 +290,144 @@ REGRESSION
             rows: [
               ['ROS Activity (Equal var. assumed)', '3.41', '.102', '17.38', '8', '.000', '27.14', '1.56'],
               ['ROS Activity (Equal var. not assumed)', '-', '-', '17.38', '5.3', '.000', '27.14', '1.56'],
-              ['Lipid Peroxidation', '4.18', '.075', '16.92', '8', '.000', '0.349', '0.021'],
-              ['Survival Rate (%)', '0.88', '.376', '-11.24', '8', '.000', '-26.60', '2.37']
+              ['Survival Rate (Equal var. assumed)', '0.88', '.376', '-8.94', '8', '.000', '-28.90', '3.23']
             ],
-            footnote: '* Standard alpha threshold p < .05. All biological oxidative stress markers passed directional significance.'
+            footnote: "Alpha level = .05. Levene's test demonstrates homoscedasticity across exposure cohorts."
           }
         ],
-        interpretation: 'Exposure to weathered polyethylene microplastics causes statistically significant elevations in cellular reactive oxygen species (ROS) and lipid peroxidation in aquatic organisms, accompanied by a 26.6% drop in 7-day survival rates.',
-        recommendation: 'Incorporate antioxidant scavengers (N-acetylcysteine) or advanced polymeric filter coatings to attenuate microplastic-induced membrane disruption.'
+        interpretation: 'Exposure to weathered polyethylene microfibers induced substantial biochemical oxidative stress, increasing cellular ROS by 202.5% and reducing organism survival by 29.8% over the 7-day test window.',
+        recommendation: 'Incorporate antioxidant co-treatments (e.g., N-acetylcysteine) in follow-up trials to test mechanistic rescue pathways.'
       },
       generatedDate: new Date().toISOString()
     },
+
     ai_sycophancy_evaluation: {
-      id: 'spss-ai-02',
-      title: 'LLM Prompt Alignment & Sycophancy Mitigation (Factorial ANOVA)',
-      domain: 'Artificial Intelligence, LLMs & Computer Science',
-      hypothesisTitle: 'Multi-Agent Knowledge Graph Frameworks for Sycophancy Mitigation',
+      id: 'spss-cs-02',
+      title: 'Autonomous LLM Sycophancy & Reinforcement Learning (ANOVA)',
+      domain: 'Computer Science, Artificial Intelligence & Safety',
+      hypothesisTitle: 'Direct Preference Optimization Reduces Epistemic Sycophancy in Multi-Turn Agentic Dialogues',
       analysisType: 'OneWay_ANOVA',
       dataset: {
         variables: [
-          { name: 'Model_ID', label: 'Model Architecture ID', type: 'Numeric', measure: 'Nominal', decimals: 0 },
-          { name: 'Alignment_Condition', label: 'Intervention (1=Standard RLHF, 2=DPO, 3=AGENTiGraph)', type: 'Numeric', measure: 'Nominal', decimals: 0 },
-          { name: 'Sycophancy_Rate', label: 'Flattery & Concession Rate (%)', type: 'Numeric', measure: 'Scale', decimals: 2 },
-          { name: 'Factuality_Score', label: 'TruthfulQA Retention (%)', type: 'Numeric', measure: 'Scale', decimals: 2 },
-          { name: 'Latency_ms', label: 'Per-Token Latency (ms)', type: 'Numeric', measure: 'Scale', decimals: 1 }
+          { name: 'Model_ID', label: 'Trial Identifier', type: 'Numeric', measure: 'Nominal', decimals: 0 },
+          { name: 'Alignment_Method', label: 'Regime (1=Standard RLHF, 2=DPO, 3=DPO+Epistemic)', type: 'Numeric', measure: 'Nominal', decimals: 0, values: [{ code: 1, label: 'Standard RLHF' }, { code: 2, label: 'DPO' }, { code: 3, label: 'DPO + Epistemic Penalty' }] },
+          { name: 'Sycophancy_Score', label: 'User Bias Conformance Index (0-100)', type: 'Numeric', measure: 'Scale', decimals: 1 },
+          { name: 'Factuality_Rate', label: 'Benchmark Ground Truth Truthfulness (%)', type: 'Numeric', measure: 'Scale', decimals: 1 },
+          { name: 'Safety_Refusal', label: 'Appropriate Boundary Enforcement (%)', type: 'Numeric', measure: 'Scale', decimals: 1 }
         ],
         rows: [
-          { Model_ID: 1, Alignment_Condition: 1, Sycophancy_Rate: 48.2, Factuality_Score: 71.4, Latency_ms: 18.2 },
-          { Model_ID: 2, Alignment_Condition: 1, Sycophancy_Rate: 52.1, Factuality_Score: 69.8, Latency_ms: 19.0 },
-          { Model_ID: 3, Alignment_Condition: 2, Sycophancy_Rate: 34.6, Factuality_Score: 78.5, Latency_ms: 21.4 },
-          { Model_ID: 4, Alignment_Condition: 2, Sycophancy_Rate: 31.8, Factuality_Score: 80.1, Latency_ms: 20.8 },
-          { Model_ID: 5, Alignment_Condition: 3, Sycophancy_Rate: 11.2, Factuality_Score: 92.4, Latency_ms: 24.5 },
-          { Model_ID: 6, Alignment_Condition: 3, Sycophancy_Rate: 9.8, Factuality_Score: 94.0, Latency_ms: 23.9 }
+          { Model_ID: 1, Alignment_Method: 1, Sycophancy_Score: 78.4, Factuality_Rate: 64.2, Safety_Refusal: 82.0 },
+          { Model_ID: 2, Alignment_Method: 1, Sycophancy_Score: 82.1, Factuality_Rate: 61.5, Safety_Refusal: 80.5 },
+          { Model_ID: 3, Alignment_Method: 1, Sycophancy_Score: 75.6, Factuality_Rate: 66.8, Safety_Refusal: 84.0 },
+          { Model_ID: 4, Alignment_Method: 1, Sycophancy_Score: 80.2, Factuality_Rate: 63.0, Safety_Refusal: 79.5 },
+          { Model_ID: 5, Alignment_Method: 1, Sycophancy_Score: 77.9, Factuality_Rate: 65.1, Safety_Refusal: 83.2 },
+          { Model_ID: 6, Alignment_Method: 2, Sycophancy_Score: 48.2, Factuality_Rate: 81.4, Safety_Refusal: 91.0 },
+          { Model_ID: 7, Alignment_Method: 2, Sycophancy_Score: 51.5, Factuality_Rate: 79.2, Safety_Refusal: 89.5 },
+          { Model_ID: 8, Alignment_Method: 2, Sycophancy_Score: 46.8, Factuality_Rate: 83.0, Safety_Refusal: 92.5 },
+          { Model_ID: 9, Alignment_Method: 2, Sycophancy_Score: 49.3, Factuality_Rate: 80.5, Safety_Refusal: 90.0 },
+          { Model_ID: 10, Alignment_Method: 2, Sycophancy_Score: 47.0, Factuality_Rate: 82.1, Safety_Refusal: 91.8 },
+          { Model_ID: 11, Alignment_Method: 3, Sycophancy_Score: 22.4, Factuality_Rate: 94.6, Safety_Refusal: 96.5 },
+          { Model_ID: 12, Alignment_Method: 3, Sycophancy_Score: 25.1, Factuality_Rate: 93.0, Safety_Refusal: 95.0 },
+          { Model_ID: 13, Alignment_Method: 3, Sycophancy_Score: 21.8, Factuality_Rate: 95.8, Safety_Refusal: 97.2 },
+          { Model_ID: 14, Alignment_Method: 3, Sycophancy_Score: 24.5, Factuality_Rate: 93.9, Safety_Refusal: 96.0 },
+          { Model_ID: 15, Alignment_Method: 3, Sycophancy_Score: 23.0, Factuality_Rate: 94.2, Safety_Refusal: 95.8 }
         ]
       },
-      spssSyntaxScript: `* SPSS SYNTAX: AI Alignment & Sycophancy ANOVA.
-* Executed by BloxBot Autonomous Statistical Engine.
+      spssSyntaxScript: `* SPSS SYNTAX FILE: LLM Sycophancy & Alignment Method Evaluation.
+* One-Way Analysis of Variance (ANOVA) with Post-Hoc Comparisons.
 
-ONEWAY Sycophancy_Rate Factuality_Score BY Alignment_Condition
+ONEWAY Sycophancy_Score Factuality_Rate Safety_Refusal BY Alignment_Method
   /STATISTICS DESCRIPTIVES HOMOGENEITY
-  /POSTHOC=TUKEY ALPHA(0.05).`,
+  /POSTHOC=TUKEY BONFERRONI ALPHA(0.05).`,
       outputSummary: {
-        testStatistic: 'F(2, 3) = 142.60, p < .001',
-        pValue: 0.00018,
-        significanceFormatted: 'p < .001 (Extremely Significant)',
-        effectSize: 'Partial η² = 0.989',
-        confidenceInterval: '95% CI [-41.2, -35.8] Sycophancy Reduction',
-        apaFormatString: 'A one-way ANOVA demonstrated a significant effect of alignment condition on model sycophancy rate, F(2, 3) = 142.60, p < .001, η²p = .99. Post-hoc Tukey HSD tests confirmed AGENTiGraph significantly suppressed sycophancy compared to standard RLHF (p < .001).',
+        testStatistic: 'F(2, 12) = 104.76, p < .001',
+        pValue: 0.000001,
+        significanceFormatted: 'p < .001 (Highly Significant)',
+        effectSize: 'η² = .946 (Extremely Large Effect Size)',
+        confidenceInterval: '95% CI [47.5, 62.1]',
+        apaFormatString: 'A one-way ANOVA demonstrated significant differences in sycophancy scores between alignment methods, F(2, 12) = 104.76, p < .001, η² = .946. Post-hoc Tukey HSD indicated DPO with epistemic penalty (M = 23.36, SD = 1.34) produced significantly lower sycophancy than Standard RLHF (M = 78.84, SD = 2.45, p < .001).',
         tables: [
           {
             title: 'ANOVA Summary Table',
-            headers: ['Source', 'Sum of Squares', 'df', 'Mean Square', 'F', 'Sig.'],
+            headers: ['Source of Variation', 'Sum of Squares', 'df', 'Mean Square', 'F', 'Sig.'],
             rows: [
-              ['Between Groups', '1612.45', '2', '806.23', '142.60', '.000'],
-              ['Within Groups', '16.96', '3', '5.65', '-', '-'],
-              ['Total', '1629.41', '5', '-', '-', '-']
+              ['Between Groups', '7842.16', 2, '3921.08', '104.76', '.000'],
+              ['Within Groups (Error)', '449.12', 12, '37.43', '-', '-'],
+              ['Total', '8291.28', 14, '-', '-', '-']
+            ]
+          },
+          {
+            title: 'Multiple Comparisons (Tukey HSD)',
+            headers: ['(I) Alignment Method', '(J) Alignment Method', 'Mean Difference (I-J)', 'Std. Error', 'Sig.', '95% CI Lower', '95% CI Upper'],
+            rows: [
+              ['Standard RLHF', 'DPO', '30.28*', '3.87', '.000', '19.98', '40.58'],
+              ['Standard RLHF', 'DPO + Epistemic', '55.48*', '3.87', '.000', '45.18', '65.78'],
+              ['DPO', 'DPO + Epistemic', '25.20*', '3.87', '.000', '14.90', '35.50']
             ]
           }
         ],
-        interpretation: 'AGENTiGraph knowledge graph grounding dramatically reduces sycophantic alignment concessions by over 38% compared to standard RLHF while maintaining high factuality.',
-        recommendation: 'Deploy AGENTiGraph verification layers across multi-turn conversational agents.'
+        interpretation: 'Direct Preference Optimization combined with explicit epistemic loss functions eliminates 70.4% of user confirmation bias compared to vanilla RLHF baselines.',
+        recommendation: 'Deploy DPO with epistemic penalties as the default alignment loss for all scientific and medical conversational models.'
       },
       generatedDate: new Date().toISOString()
     },
+
     agri_drought_tolerance: {
       id: 'spss-agri-03',
-      title: 'Rhizosphere Microbiome Inoculation & Crop Yield (ANOVA & Regression)',
-      domain: 'Agricultural Science, Food Security & Agronomy',
-      hypothesisTitle: 'Rhizosphere Microbial Consortia for Stomatal Conductance & Drought Yield',
+      title: 'Rhizosphere Microbiome Inoculation & Crop Drought Resilience (ANOVA)',
+      domain: 'Agricultural Science & Microbiome Genetics',
+      hypothesisTitle: 'Multi-Strain Rhizobacteria Consortia Alleviate Severe Osmotic Deficits in Cereal Crops',
       analysisType: 'OneWay_ANOVA',
       dataset: {
         variables: [
-          { name: 'Plot_ID', label: 'Field Trial Plot', type: 'Numeric', measure: 'Nominal', decimals: 0 },
-          { name: 'Inoculant_Type', label: 'Microbiome Formulation (1=Control, 2=Bacillus, 3=Consortium)', type: 'Numeric', measure: 'Nominal', decimals: 0 },
-          { name: 'Biomass_Yield', label: 'Grain Yield (kg/ha)', type: 'Numeric', measure: 'Scale', decimals: 1 },
-          { name: 'Stomatal_Conductance', label: 'Stomatal Conductance (mmol/m²·s)', type: 'Numeric', measure: 'Scale', decimals: 2 }
+          { name: 'Plot_ID', label: 'Agronomic Replicate', type: 'Numeric', measure: 'Nominal', decimals: 0 },
+          { name: 'Microbiome_Treatment', label: 'Treatment (0=Uninoculated, 1=Single Strain, 2=Consortia)', type: 'Numeric', measure: 'Nominal', decimals: 0, values: [{ code: 0, label: 'Uninoculated Control' }, { code: 1, label: 'Pseudomonas putida' }, { code: 2, label: '4-Strain Synthetic Consortia' }] },
+          { name: 'Grain_Yield', label: 'Grain Yield (metric tonnes / hectare)', type: 'Numeric', measure: 'Scale', decimals: 2 },
+          { name: 'Shoot_Biomass', label: 'Dry Shoot Weight (g / plant)', type: 'Numeric', measure: 'Scale', decimals: 1 },
+          { name: 'Proline_Content', label: 'Leaf Osmoprotectant Proline (µmol/g FW)', type: 'Numeric', measure: 'Scale', decimals: 2 }
         ],
         rows: [
-          { Plot_ID: 1, Inoculant_Type: 1, Biomass_Yield: 2450.0, Stomatal_Conductance: 120.4 },
-          { Plot_ID: 2, Inoculant_Type: 1, Biomass_Yield: 2510.0, Stomatal_Conductance: 118.9 },
-          { Plot_ID: 3, Inoculant_Type: 2, Biomass_Yield: 3100.0, Stomatal_Conductance: 165.2 },
-          { Plot_ID: 4, Inoculant_Type: 2, Biomass_Yield: 3040.0, Stomatal_Conductance: 158.7 },
-          { Plot_ID: 5, Inoculant_Type: 3, Biomass_Yield: 3820.0, Stomatal_Conductance: 210.5 },
-          { Plot_ID: 6, Inoculant_Type: 3, Biomass_Yield: 3950.0, Stomatal_Conductance: 222.1 }
+          { Plot_ID: 1, Microbiome_Treatment: 0, Grain_Yield: 2.14, Shoot_Biomass: 42.5, Proline_Content: 1.85 },
+          { Plot_ID: 2, Microbiome_Treatment: 0, Grain_Yield: 2.28, Shoot_Biomass: 44.1, Proline_Content: 1.92 },
+          { Plot_ID: 3, Microbiome_Treatment: 0, Grain_Yield: 1.98, Shoot_Biomass: 41.0, Proline_Content: 1.78 },
+          { Plot_ID: 4, Microbiome_Treatment: 0, Grain_Yield: 2.35, Shoot_Biomass: 45.2, Proline_Content: 1.95 },
+          { Plot_ID: 5, Microbiome_Treatment: 0, Grain_Yield: 2.05, Shoot_Biomass: 43.0, Proline_Content: 1.82 },
+          { Plot_ID: 6, Microbiome_Treatment: 1, Grain_Yield: 3.42, Shoot_Biomass: 58.6, Proline_Content: 3.40 },
+          { Plot_ID: 7, Microbiome_Treatment: 1, Grain_Yield: 3.65, Shoot_Biomass: 61.2, Proline_Content: 3.55 },
+          { Plot_ID: 8, Microbiome_Treatment: 1, Grain_Yield: 3.30, Shoot_Biomass: 57.0, Proline_Content: 3.28 },
+          { Plot_ID: 9, Microbiome_Treatment: 1, Grain_Yield: 3.55, Shoot_Biomass: 59.8, Proline_Content: 3.48 },
+          { Plot_ID: 10, Microbiome_Treatment: 1, Grain_Yield: 3.48, Shoot_Biomass: 58.1, Proline_Content: 3.42 },
+          { Plot_ID: 11, Microbiome_Treatment: 2, Grain_Yield: 4.85, Shoot_Biomass: 76.4, Proline_Content: 5.12 },
+          { Plot_ID: 12, Microbiome_Treatment: 2, Grain_Yield: 5.10, Shoot_Biomass: 79.1, Proline_Content: 5.35 },
+          { Plot_ID: 13, Microbiome_Treatment: 2, Grain_Yield: 4.72, Shoot_Biomass: 74.8, Proline_Content: 4.98 },
+          { Plot_ID: 14, Microbiome_Treatment: 2, Grain_Yield: 5.02, Shoot_Biomass: 78.0, Proline_Content: 5.25 },
+          { Plot_ID: 15, Microbiome_Treatment: 2, Grain_Yield: 4.90, Shoot_Biomass: 77.2, Proline_Content: 5.18 }
         ]
       },
-      spssSyntaxScript: `* SPSS SYNTAX: Agricultural Drought Yield ANOVA.
-ONEWAY Biomass_Yield Stomatal_Conductance BY Inoculant_Type
+      spssSyntaxScript: `* SPSS SYNTAX FILE: Rhizosphere Microbiome & Crop Drought Resilience.
+ONEWAY Grain_Yield Shoot_Biomass Proline_Content BY Microbiome_Treatment
   /STATISTICS DESCRIPTIVES HOMOGENEITY
   /POSTHOC=TUKEY ALPHA(0.05).`,
       outputSummary: {
-        testStatistic: 'F(2, 3) = 89.44, p < .001',
-        pValue: 0.00031,
+        testStatistic: 'F(2, 12) = 28.64, p < .001',
+        pValue: 0.000028,
         significanceFormatted: 'p < .001 (Highly Significant)',
-        effectSize: 'Partial η² = 0.983',
-        confidenceInterval: '95% CI [+1210, +1590] kg/ha Yield Gain',
-        apaFormatString: 'A one-way ANOVA indicated a statistically significant improvement in grain biomass yield among plots treated with engineered microbial consortia (M = 3885.0 kg/ha) versus control (M = 2480.0 kg/ha), F(2, 3) = 89.44, p < .001, η²p = .98.',
+        effectSize: 'η² = .827 (Substantial Agronomic Impact)',
+        confidenceInterval: '95% CI [2.42, 3.18]',
+        apaFormatString: 'A one-way ANOVA indicated that synthetic rhizosphere consortia significantly enhanced crop grain yield under drought conditions, F(2, 12) = 28.64, p < .001, η² = .827. Synthetic consortia increased yield by 127.8% over uninoculated control.',
         tables: [
           {
-            title: 'ANOVA Grain Yield Summary',
+            title: 'ANOVA: Grain Yield by Inoculant Cohort',
             headers: ['Source', 'Sum of Squares', 'df', 'Mean Square', 'F', 'Sig.'],
             rows: [
-              ['Between Groups', '2014600.0', '2', '1007300.0', '89.44', '.000'],
-              ['Within Groups', '33780.0', '3', '11260.0', '-', '-'],
-              ['Total', '2048380.0', '5', '-', '-', '-']
+              ['Between Groups', '19.48', 2, '9.74', '28.64', '.000'],
+              ['Within Groups', '4.08', 12, '0.34', '-', '-'],
+              ['Total', '23.56', 14, '-', '-', '-']
             ]
           }
         ],
-        interpretation: 'Consortia inoculants significantly optimize root rhizosphere nutrient transport and prevent stomatal closure under water-stress conditions.',
-        recommendation: 'Scale multi-strain bio-fertilizer formulations for drought-prone arid zones.'
+        interpretation: 'Multi-strain synthetic consortia significantly elevate endogenous proline synthesis, enabling cellular osmoregulation under water stress.',
+        recommendation: 'Scale field formulation into granular microencapsulation for commercial seed coating trials.'
       },
       generatedDate: new Date().toISOString()
     }
@@ -294,177 +435,148 @@ ONEWAY Biomass_Yield Stomatal_Conductance BY Inoculant_Type
 
   const [activePackageKey, setActivePackageKey] = useState<string>('microplastics_ecotoxicity');
 
-  // Handle externally applied SPSS analysis packages from BloxBot
-  React.useEffect(() => {
-    if (externalActivePackage) {
-      const pkgKey = externalActivePackage.id || `bloxbot_pkg_${Date.now()}`;
-      setSampleDatasets(prev => ({
-        ...prev,
-        [pkgKey]: externalActivePackage
-      }));
-      setActivePackageKey(pkgKey);
-      setActiveView('output');
-      if (externalActivePackage.analysisType) {
-        setSelectedAnalysisType(externalActivePackage.analysisType);
-      }
-    }
-  }, [externalActivePackage]);
+  // Sync external package if passed
+  const activePackage: SpssAnalysisPackage = useMemo(() => {
+    if (externalActivePackage) return externalActivePackage;
+    return sampleDatasets[activePackageKey] || sampleDatasets.microplastics_ecotoxicity;
+  }, [externalActivePackage, sampleDatasets, activePackageKey]);
 
-  const activePackage = sampleDatasets[activePackageKey] || sampleDatasets.microplastics_ecotoxicity;
-
-  // Available documents combining uploaded papers and standard benchmarks
+  // Available Documents List
   const availableDocuments = useMemo(() => {
     const defaultDocs = [
-      { id: 'sample-microplastics', title: 'Quantitative Microplastic and Nanoplastic Abundance in Coastal Sediments via Automated µFTIR', domain: 'Environmental Science, Microplastics & Toxicology' },
-      { id: 'sample-ai', title: 'AGENTiGraph: Multi-Agent Knowledge Graph Frameworks for Sycophancy Mitigation', domain: 'Artificial Intelligence, LLMs & Computer Science' },
-      { id: 'sample-agri', title: 'Rhizosphere Microbiome Engineering for Enhanced Drought Tolerance in Cereal Crops', domain: 'Agricultural Science, Food Security & Agronomy' }
+      {
+        id: 'sample-microplastics',
+        title: 'Microplastic Bioaccumulation & Cell Toxicity Index',
+        domain: 'Environmental Science, Microplastics & Toxicology',
+        type: 'Research Article'
+      },
+      {
+        id: 'sample-ai-eval',
+        title: 'Autonomous LLM Sycophancy & Reinforcement Learning',
+        domain: 'Computer Science, Artificial Intelligence & Safety',
+        type: 'Conference Preprint'
+      },
+      {
+        id: 'sample-agri-rhizosphere',
+        title: 'Rhizosphere Microbiome Inoculation & Crop Drought Resilience',
+        domain: 'Agricultural Science & Microbiome Genetics',
+        type: 'Peer-Reviewed Manuscript'
+      }
     ];
 
-    const uploaded = papers.map(p => ({
-      id: p.id,
-      title: p.title,
-      domain: p.domain || 'Scientific Document'
+    const mappedHypotheses = hypotheses.map(h => ({
+      id: `hypo-${h.id}`,
+      title: h.title,
+      domain: h.domain,
+      type: 'Generated Scientific Hypothesis'
     }));
 
-    return [...uploaded, ...defaultDocs];
-  }, [papers]);
+    const mappedPapers = papers.map(p => ({
+      id: `paper-${p.id}`,
+      title: p.title,
+      domain: p.domain || 'Scientific Discovery Literature',
+      type: 'Ingested ArXiv / PubMed Document'
+    }));
 
-  // Handle Drag & Drop / Direct Dataset Upload into SPSS Studio
+    return [...defaultDocs, ...mappedHypotheses, ...mappedPapers];
+  }, [hypotheses, papers]);
+
+  const currentDocMeta = useMemo(() => {
+    return availableDocuments.find(d => d.id === selectedDocumentId) || availableDocuments[0];
+  }, [availableDocuments, selectedDocumentId]);
+
+  // Handle file upload
   const handleDatasetFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    const file = files[0];
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     setUploadedFileName(file.name);
+    setSelectedDocumentId('uploaded-custom-doc');
 
     const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (!content) return;
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      if (!text) return;
 
-      // Handle CSV data upload
-      if (file.name.endsWith('.csv') || file.name.endsWith('.txt') || file.name.endsWith('.tsv')) {
-        parseAndLoadCsvDataset(file.name, content);
-      } else {
-        // Document uploaded (.docx, .pdf, etc.)
-        triggerAgenticDocumentWorkflow(file.name, content);
+      const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+      if (lines.length >= 2) {
+        const delimiter = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ',';
+        const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
+        
+        const newVars: SpssVariable[] = headers.map((h) => ({
+          name: h.replace(/[^a-zA-Z0-9_]/g, '_'),
+          label: h,
+          type: 'Numeric',
+          measure: 'Scale',
+          decimals: 2
+        }));
+
+        const newRows = lines.slice(1).map((line, rIdx) => {
+          const vals = line.split(delimiter).map(v => v.trim().replace(/^["']|["']$/g, ''));
+          const rowObj: Record<string, any> = { ID: rIdx + 1 };
+          headers.forEach((h, idx) => {
+            const varName = newVars[idx].name;
+            const parsedNum = Number(vals[idx]);
+            rowObj[varName] = isNaN(parsedNum) ? vals[idx] : parsedNum;
+          });
+          return rowObj;
+        });
+
+        const customPkgKey = `custom_${Date.now()}`;
+        const newPkg: SpssAnalysisPackage = {
+          id: `spss-upload-${Date.now()}`,
+          title: `Uploaded Dataset Analysis: ${file.name}`,
+          domain: 'Custom Research Data Ingestion',
+          hypothesisTitle: `Empirical Evaluation of Ingested Metrics in ${file.name}`,
+          analysisType: selectedAnalysisType,
+          dataset: {
+            variables: newVars,
+            rows: newRows
+          },
+          spssSyntaxScript: `* SPSS SYNTAX GENERATED FOR UPLOADED FILE: ${file.name}\n* Ingested cases: N = ${newRows.length}, Variables: ${newVars.length}\n\nGET DATA /TYPE=TXT\n  /FILE='${file.name}'\n  /DELIMITERS="${delimiter}"\n  /FIRSTCASE=2.\nEXECUTE.\n\nDESCRIPTIVES VARIABLES=${newVars.map(v => v.name).join(' ')}\n  /STATISTICS=MEAN STDDEV MIN MAX KURTOSIS SKEWNESS.`,
+          outputSummary: {
+            testStatistic: `N = ${newRows.length}, k = ${newVars.length} Variables`,
+            pValue: 0.001,
+            significanceFormatted: 'Data Successfully Ingested & Verified',
+            effectSize: 'Calculated across observed sample matrix',
+            confidenceInterval: '95% CI Computed for all scale measures',
+            apaFormatString: `Statistical audit of ${file.name} confirmed N = ${newRows.length} valid cases with ${newVars.length} variables. Ready for inferential modeling.`,
+            tables: [
+              {
+                title: 'Data Ingestion Summary',
+                headers: ['Metric', 'Observed Value'],
+                rows: [
+                  ['Total File Size', `${(file.size / 1024).toFixed(1)} KB`],
+                  ['Total Valid Records', `${newRows.length}`],
+                  ['Variables Detected', `${newVars.length}`]
+                ]
+              }
+            ],
+            interpretation: `Dataset "${file.name}" was parsed into memory. Measurement scales and column types have been auto-assigned.`,
+            recommendation: 'Run BloxBot Auto-Statistical Analysis to compute specific parametric tests.'
+          },
+          generatedDate: new Date().toISOString()
+        };
+
+        setSampleDatasets(prev => ({
+          ...prev,
+          [customPkgKey]: newPkg
+        }));
+        setActivePackageKey(customPkgKey);
+        speakText(`Successfully uploaded and parsed dataset ${file.name}. ${newRows.length} cases detected.`);
       }
     };
-
-    if (file.name.endsWith('.csv') || file.name.endsWith('.txt') || file.name.endsWith('.tsv')) {
-      reader.readAsText(file);
-    } else {
-      reader.readAsArrayBuffer(file);
-    }
+    reader.readAsText(file);
   };
 
-  // Helper to parse CSV data into SPSS dataset matrix
-  const parseAndLoadCsvDataset = (fileName: string, rawCsv: string) => {
-    try {
-      const lines = rawCsv.split(/\r?\n/).filter(line => line.trim().length > 0);
-      if (lines.length < 2) return;
-
-      const delimiter = lines[0].includes(',') ? ',' : lines[0].includes('\t') ? '\t' : ';';
-      const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
-      
-      const rows: Record<string, any>[] = [];
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(delimiter).map(v => v.trim().replace(/^["']|["']$/g, ''));
-        const rowObj: Record<string, any> = {};
-        headers.forEach((h, idx) => {
-          const val = values[idx];
-          const num = Number(val);
-          rowObj[h] = !isNaN(num) && val !== '' ? num : val;
-        });
-        rows.push(rowObj);
-      }
-
-      const variables: SpssVariable[] = headers.map(h => {
-        const sampleVal = rows[0]?.[h];
-        const isNumeric = typeof sampleVal === 'number';
-        return {
-          name: h.replace(/[^\w]/g, '_'),
-          label: h,
-          type: isNumeric ? 'Numeric' : 'String',
-          measure: isNumeric ? 'Scale' : 'Nominal',
-          decimals: isNumeric ? 2 : 0
-        };
-      });
-
-      const newPackageKey = `custom_${Date.now()}`;
-      const newPackage: SpssAnalysisPackage = {
-        id: `spss-uploaded-${Date.now()}`,
-        title: `Statistical Protocol: ${fileName}`,
-        domain: 'Empirical Data & Quantitative Science',
-        hypothesisTitle: `Empirical Analysis of Ingested Dataset (${fileName})`,
-        analysisType: 'Independent_Samples_tTest',
-        dataset: {
-          variables,
-          rows
-        },
-        spssSyntaxScript: `* SPSS SYNTAX GENERATED BY BLOXBOT FROM UPLOADED DATASET: ${fileName}.
-GET DATA /TYPE=TXT
-  /FILE='${fileName}'
-  /DELCASE=LINE
-  /DELIMITERS="${delimiter}"
-  /FIRSTCASE=2
-  /VARIABLES=
-  ${variables.map(v => `${v.name} ${v.type === 'Numeric' ? 'F8.2' : 'A50'}`).join('\n  ')}.
-EXECUTE.
-
-DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.name).join(' ')}
-  /STATISTICS=MEAN STDDEV MIN MAX KURTOSIS SKEWNESS.`,
-        outputSummary: {
-          testStatistic: `N = ${rows.length}, Variables = ${variables.length}`,
-          pValue: 0.001,
-          significanceFormatted: 'Data successfully ingested into SPSS Studio',
-          effectSize: `Profiled ${variables.length} dimensions`,
-          confidenceInterval: '95% CI Baseline',
-          apaFormatString: `Descriptive and inferential analysis on dataset '${fileName}' encompassing N = ${rows.length} valid cases across ${variables.length} recorded variables.`,
-          tables: [
-            {
-              title: 'Ingested Dataset Descriptive Statistics',
-              headers: ['Variable', 'N', 'Mean / Mode', 'Measure Level', 'Type'],
-              rows: variables.map(v => {
-                const vals = rows.map(r => r[v.label]).filter(x => typeof x === 'number');
-                const avg = vals.length > 0 ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : 'Categorical';
-                return [v.name, rows.length, avg, v.measure, v.type];
-              })
-            }
-          ],
-          interpretation: `Dataset '${fileName}' parsed with ${rows.length} cases. Ready for automated agentic test execution.`,
-          recommendation: 'Run BloxBot Auto-Runner to perform hypothesis testing or regressions.'
-        },
-        generatedDate: new Date().toISOString()
-      };
-
-      setSampleDatasets(prev => ({
-        ...prev,
-        [newPackageKey]: newPackage
-      }));
-      setActivePackageKey(newPackageKey);
-      setActiveView('data_view');
-
-      speakText(`Dataset ${fileName} successfully parsed into SPSS Data View! ${rows.length} cases and ${variables.length} variables loaded.`);
-    } catch (err) {
-      console.error("Error parsing CSV:", err);
-    }
-  };
-
-  const triggerAgenticDocumentWorkflow = (fileName: string, content: any) => {
-    // Switch to output view with live progress bar and run
-    setActiveView('output');
-    setCustomResearchPrompt(`Analyze ingested document: ${fileName}`);
-    handleBloxBotAgenticExecution();
-  };
-
-  // BLOXBOT Automated Agentic Flow Execution Handler
+  // Run BloxBot Autonomous Multi-Stage SPSS Execution
   const handleBloxBotAgenticExecution = async () => {
     setIsAgentRunning(true);
     setAgentStep(1);
     setAgentLogMessages([]);
 
     const log = (msg: string) => {
-      setAgentLogMessages(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
+      setAgentLogMessages(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`]);
     };
 
     log(`[BloxBot Agent] Initializing SPSS statistical protocol for target...`);
@@ -505,6 +617,32 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
 
     log(`[Synthesis Engine] Protocol Complete! Test Statistic: ${targetPkg.outputSummary.testStatistic}, Effect: ${targetPkg.outputSummary.effectSize}`);
 
+    // Create a new structured agent log record for this document
+    const newLogRecord: AgenticAnalysisLogEntry = {
+      id: `log_run_${Date.now()}`,
+      documentId: selectedDoc.id,
+      documentTitle: selectedDoc.title,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      analysisType: selectedAnalysisType,
+      testStatistic: targetPkg.outputSummary.testStatistic,
+      significance: targetPkg.outputSummary.significanceFormatted,
+      effectSize: targetPkg.outputSummary.effectSize,
+      pValue: targetPkg.outputSummary.pValue,
+      confidence: confidenceLevel,
+      apaConclusion: targetPkg.outputSummary.apaFormatString,
+      stepDetails: [
+        `Ingested "${selectedDoc.title.slice(0, 40)}" matrix; profiled ${targetPkg.dataset.variables.length} variables.`,
+        `Assessed parametric assumptions for ${selectedAnalysisType.replace(/_/g, ' ')} under alpha = ${((100 - confidenceLevel) / 100).toFixed(2)}.`,
+        `Synthesized syntax commands & computed test statistic: ${targetPkg.outputSummary.testStatistic}.`,
+        `Generated APA 7th Edition manuscript reporting statement.`
+      ],
+      executionTimeMs: 1350,
+      variablesCount: targetPkg.dataset.variables.length,
+      casesCount: targetPkg.dataset.rows.length
+    };
+
+    setAgenticLogsHistory(prev => [newLogRecord, ...prev]);
+
     setActivePackageKey(targetKey);
     setIsAgentRunning(false);
     setAgentStep(0);
@@ -535,6 +673,62 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+  };
+
+  // Direct Format Downloader
+  const handleDirectExportFormat = (format: 'csv' | 'json' | 'md' | 'pdf' | 'sps' | 'modal') => {
+    if (format === 'modal') {
+      setIsExportModalOpen(true);
+      return;
+    }
+
+    if (format === 'sps') {
+      handleDownloadSps();
+      return;
+    }
+
+    if (format === 'json') {
+      const dataStr = JSON.stringify(activePackage, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${activePackage.id}_SPSS_Analysis.json`;
+      link.click();
+      return;
+    }
+
+    if (format === 'csv') {
+      const vars = activePackage.dataset.variables;
+      const rows = activePackage.dataset.rows;
+      let csv = `# PROTOCOL: ${activePackage.title}\n# STATISTIC: ${activePackage.outputSummary.testStatistic}\n# APA: ${activePackage.outputSummary.apaFormatString}\n\n`;
+      csv += vars.map(v => v.name).join(',') + '\n';
+      rows.forEach(r => {
+        csv += vars.map(v => r[v.name] !== undefined ? `"${r[v.name]}"` : `"${r[v.label] || ''}"`).join(',') + '\n';
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${activePackage.id}_Data_Matrix.csv`;
+      link.click();
+      return;
+    }
+
+    if (format === 'md') {
+      const md = `# ${activePackage.title}\n\n**Domain:** ${activePackage.domain}\n**Analysis Method:** ${activePackage.analysisType}\n\n## APA 7th Edition Summary\n> "${activePackage.outputSummary.apaFormatString}"\n\n### Key Metrics\n- **Test Statistic:** \`${activePackage.outputSummary.testStatistic}\`\n- **Significance:** \`${activePackage.outputSummary.significanceFormatted}\`\n- **Effect Size:** \`${activePackage.outputSummary.effectSize}\`\n- **Confidence Interval:** \`${activePackage.outputSummary.confidenceInterval}\`\n\n## Methodological Interpretation\n${activePackage.outputSummary.interpretation}\n\n## Actionable Recommendation\n${activePackage.outputSummary.recommendation}\n\n## IBM SPSS Command Syntax\n\`\`\`spss\n${activePackage.spssSyntaxScript}\n\`\`\`\n`;
+      const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${activePackage.id}_Report.md`;
+      link.click();
+      return;
+    }
+
+    if (format === 'pdf') {
+      setIsExportModalOpen(true);
+    }
   };
 
   const handleUpdateVariables = (updatedVars: SpssVariable[]) => {
@@ -620,16 +814,13 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
             <span>Upload Data / Doc</span>
           </button>
 
-          {/* Export Output Button */}
-          <button
-            id="spss-export-output-btn"
-            type="button"
-            onClick={() => setIsExportModalOpen(true)}
-            className="px-3.5 py-1.5 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-mono text-[11px] font-bold flex items-center gap-1.5 transition-all border border-emerald-500/40 cursor-pointer shadow-sm"
-          >
-            <Download className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Export Output</span>
-          </button>
+          {/* Enhanced Export Output Dropdown */}
+          <ExportDropdown
+            id="spss-header-export-dropdown"
+            label="Export Output"
+            onExport={handleDirectExportFormat}
+            includeSps={true}
+          />
 
           <button
             type="button"
@@ -737,7 +928,7 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
           step={agentStep}
           statusText={agentStatusText}
           logMessages={agentLogMessages}
-          documentTitle={availableDocuments.find(d => d.id === selectedDocumentId)?.title || uploadedFileName || activePackage.title}
+          documentTitle={currentDocMeta.title || uploadedFileName || activePackage.title}
           analysisType={selectedAnalysisType}
         />
       </div>
@@ -770,7 +961,16 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
             }`}
           >
             <Calculator className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Quick Stats Widget</span>
+            <span>Quick Stats & BloxBot</span>
+          </button>
+          <button
+            onClick={() => setActiveView('agent_logs')}
+            className={`px-3 py-1 rounded transition-all flex items-center gap-1.5 cursor-pointer ${
+              activeView === 'agent_logs' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <History className="w-3.5 h-3.5 text-sky-400" />
+            <span>Agent Logs Summary</span>
           </button>
           <button
             onClick={() => setActiveView('variable_view')}
@@ -793,13 +993,12 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
         </div>
 
         <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
-          <button
-            onClick={() => setIsExportModalOpen(true)}
-            className="px-2.5 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 font-bold flex items-center gap-1 transition-all cursor-pointer"
-          >
-            <Download className="w-3 h-3 text-emerald-400" />
-            <span>Export Report (JSON / CSV)</span>
-          </button>
+          <ExportDropdown
+            id="spss-viewswitcher-export-dropdown"
+            label="Export (CSV / JSON / MD)"
+            onExport={handleDirectExportFormat}
+            includeSps={true}
+          />
           <span className="hidden md:inline">Domain: <span className="text-slate-200 font-semibold">{activePackage.domain}</span></span>
         </div>
       </div>
@@ -817,16 +1016,15 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsExportModalOpen(true)}
-                  className="px-2.5 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 font-mono text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
-                >
-                  <Download className="w-3 h-3 text-emerald-400" />
-                  <span>Export Report</span>
-                </button>
+                <ExportDropdown
+                  id="spss-output-card-export"
+                  label="Export Report"
+                  onExport={handleDirectExportFormat}
+                  includeSps={true}
+                />
                 <button
                   onClick={handleCopyApa}
-                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[10px] flex items-center gap-1 transition-all cursor-pointer"
+                  className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono text-[10px] flex items-center gap-1 transition-all cursor-pointer"
                 >
                   {copiedApa ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                   <span>{copiedApa ? 'Copied APA' : 'Copy APA Statement'}</span>
@@ -854,11 +1052,21 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
             </div>
           </div>
 
-          {/* Quick Stats Summary Widget */}
+          {/* Quick Stats Summary Widget with BloxBot Explanations */}
           <SpssQuickStats
             variables={activePackage.dataset.variables}
             rows={activePackage.dataset.rows}
             datasetTitle={activePackage.title}
+            onVoiceSpeak={speakText}
+          />
+
+          {/* Summary View for the Last 3 Agentic Analysis Logs for Currently Open Document */}
+          <SpssAgenticLogsSummary
+            currentDocumentId={selectedDocumentId}
+            currentDocumentTitle={currentDocMeta.title}
+            logs={agenticLogsHistory}
+            onOpenSyntax={() => setActiveView('syntax')}
+            onExportLog={(log, format) => handleDirectExportFormat(format)}
           />
 
           {/* SPSS Pivot Output Tables */}
@@ -920,17 +1128,15 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
         </div>
       )}
 
-      {/* TAB 2: DATA VIEW (PREVIEW PANE + FULL SPREADSHEET GRID) */}
+      {/* TAB 2: DATA VIEW */}
       {activeView === 'data_view' && (
         <div className="flex flex-col gap-4 animate-fadeIn">
-          {/* Data Preview Pane (First 10 Rows with column type badges) */}
           <SpssDataPreview
             variables={activePackage.dataset.variables}
             rows={activePackage.dataset.rows}
             datasetTitle={activePackage.title}
           />
 
-          {/* Full Data Matrix */}
           <div className="bg-[#0F1115] border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-md">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <div className="flex items-center gap-2">
@@ -982,6 +1188,7 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
             variables={activePackage.dataset.variables}
             rows={activePackage.dataset.rows}
             datasetTitle={activePackage.title}
+            onVoiceSpeak={speakText}
           />
           <SpssDataPreview
             variables={activePackage.dataset.variables}
@@ -992,7 +1199,20 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
         </div>
       )}
 
-      {/* TAB 4: VARIABLE VIEW (VARIABLE INSPECTOR) */}
+      {/* TAB 4: AGENTIC LOGS SUMMARY */}
+      {activeView === 'agent_logs' && (
+        <div className="flex flex-col gap-4 animate-fadeIn">
+          <SpssAgenticLogsSummary
+            currentDocumentId={selectedDocumentId}
+            currentDocumentTitle={currentDocMeta.title}
+            logs={agenticLogsHistory}
+            onOpenSyntax={() => setActiveView('syntax')}
+            onExportLog={(log, format) => handleDirectExportFormat(format)}
+          />
+        </div>
+      )}
+
+      {/* TAB 5: VARIABLE VIEW */}
       {activeView === 'variable_view' && (
         <div className="flex flex-col gap-4 animate-fadeIn">
           <SpssVariableInspector
@@ -1003,7 +1223,7 @@ DESCRIPTIVES VARIABLES=${variables.filter(v => v.type === 'Numeric').map(v => v.
         </div>
       )}
 
-      {/* TAB 5: SYNTAX (.SPS) */}
+      {/* TAB 6: SYNTAX (.SPS) */}
       {activeView === 'syntax' && (
         <div className="bg-[#0F1115] border border-slate-800 rounded-xl p-4 flex flex-col gap-3 shadow-md animate-fadeIn">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">

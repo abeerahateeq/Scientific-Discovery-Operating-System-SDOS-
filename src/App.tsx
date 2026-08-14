@@ -26,6 +26,7 @@ import ExportReportModal from "./components/ExportReportModal";
 import ApiKeyModal from "./components/ApiKeyModal";
 import RecentActivityView, { ActivityItem } from "./components/RecentActivityView";
 import SpssStudio from "./components/SpssStudio";
+import ThesisGenerator from "./components/ThesisGenerator";
 import { classifyTopicDomain } from "./config/domainTemplates";
 import { 
   auth, 
@@ -82,12 +83,13 @@ import {
   ChevronRight,
   AlertTriangle,
   Layers,
-  Calculator
+  Calculator,
+  GraduationCap
 } from "lucide-react";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "graph" | "literature" | "hypotheses" | "gaps" | "market" | "funding" | "institutional" | "research_os" | "activity" | "spss"
+    "dashboard" | "graph" | "literature" | "hypotheses" | "gaps" | "market" | "funding" | "institutional" | "research_os" | "activity" | "spss" | "thesis"
   >("dashboard");
   
   // User Auth & Notification state
@@ -1027,6 +1029,22 @@ export default function App() {
             </button>
 
             <button
+              id="tab-thesis-btn"
+              onClick={() => setActiveTab("thesis")}
+              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-[11px] font-medium transition-all ${
+                activeTab === "thesis"
+                  ? "bg-purple-500/15 text-purple-300 border-l-2 border-purple-400 pl-2 font-bold"
+                  : "text-purple-400/90 hover:bg-[#16181D] hover:text-purple-300"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <GraduationCap className="w-3.5 h-3.5 shrink-0 text-purple-400" />
+                <span>Thesis Generator</span>
+              </div>
+              <span className="text-[9px] font-mono bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded font-bold">PAGES</span>
+            </button>
+
+            <button
               id="tab-gaps-btn"
               onClick={() => setActiveTab("gaps")}
               className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-[11px] font-medium transition-all ${
@@ -1322,6 +1340,15 @@ export default function App() {
                 hypotheses={hypotheses}
                 papers={papers}
                 externalActivePackage={appliedSpssPackage}
+              />
+            )}
+
+            {activeTab === "thesis" && (
+              <ThesisGenerator
+                papers={papers}
+                userName={userProfile?.displayName || userProfile?.email || "Scholar Researcher"}
+                defaultDomain={hypotheses[0]?.domain || "Neuro-Symbolic Cognitive Computing"}
+                onClose={() => setActiveTab("dashboard")}
               />
             )}
 
@@ -2012,7 +2039,10 @@ export default function App() {
         hypotheses={batchSelectedHypothesisIds.length > 0 ? hypotheses.filter(h => batchSelectedHypothesisIds.includes(h.id)) : hypotheses}
         nodes={nodes}
         links={links}
-        userName={userProfile?.displayName || userProfile?.email || "Guest Scholar"}
+        papers={papers}
+        userName={userProfile?.displayName || userProfile?.email || "Scholar Researcher"}
+        apaStatement={appliedSpssPackage?.outputSummary?.apaFormatString}
+        activeDatasetTitle={appliedSpssPackage?.title}
       />
 
       {/* Batch Delete Confirmation Modal */}

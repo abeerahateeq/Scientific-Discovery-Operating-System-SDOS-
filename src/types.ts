@@ -386,3 +386,84 @@ export interface DiscoveryResponse {
   connections: { source: string; target: string; relationship: string; confidence: number }[];
   geminiExplanation: string;
 }
+
+export type CitationStyle = 'apa7' | 'vancouver' | 'ieee' | 'harvard' | 'chicago' | 'nature';
+
+export interface ExportPreset {
+  id: string;
+  name: string;
+  description: string;
+  templateStyle: 'apa7' | 'nature' | 'ieee' | 'chicago';
+  citationStyle: CitationStyle;
+  format: 'pdf' | 'csv' | 'json' | 'markdown' | 'nature' | 'apa7' | 'ieee';
+  includedFields: {
+    title: boolean;
+    authors: boolean;
+    abstract: boolean;
+    keywords: boolean;
+    doi: boolean;
+    apaStatement: boolean;
+    spssSyntax: boolean;
+    hypotheses: boolean;
+    rawDataset: boolean;
+  };
+  isDefault?: boolean;
+  createdAt: string;
+}
+
+export interface ThesisChapter {
+  id: string;
+  number: number;
+  title: string;
+  subtitle?: string;
+  allocatedPages: number;
+  wordCount: number;
+  content: string;
+  hasTablesOrSyntax?: boolean;
+  codeBlocks?: { language: string; code: string; caption: string }[];
+}
+
+export interface ThesisPage {
+  pageNumber: number;
+  chapterTitle: string;
+  runningHead: string;
+  contentHtml: string;
+  contentRaw: string;
+  wordCount: number;
+  hasFigureOrTable: boolean;
+}
+
+export interface ThesisGenerationConfig {
+  targetPages: number; // e.g. 5, 10, 20, 50, 100
+  title: string;
+  author: string;
+  institution: string;
+  degreeLevel: 'Bachelor of Science (B.Sc.)' | 'Master of Science (M.Sc.)' | 'Doctor of Philosophy (Ph.D.)' | 'Postdoctoral Monograph';
+  domain: string;
+  citationStyle: CitationStyle;
+  customInstructions: string;
+  uploadedDocumentName?: string;
+  uploadedDocumentText?: string;
+  extractedVariables?: string[];
+  extractedDataRows?: Record<string, any>[];
+  includeSpssSyntax: boolean;
+  includeLatexEquations: boolean;
+}
+
+export interface GeneratedThesisDocument {
+  id: string;
+  title: string;
+  author: string;
+  institution: string;
+  degreeLevel: string;
+  domain: string;
+  targetPages: number;
+  totalPages: number;
+  totalWords: number;
+  generatedAt: string;
+  citationStyle: CitationStyle;
+  chapters: ThesisChapter[];
+  pages: ThesisPage[];
+  references: string[];
+  rawMarkdown: string;
+}

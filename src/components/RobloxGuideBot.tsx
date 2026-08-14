@@ -42,6 +42,7 @@ import {
 import { UserProfile } from '../lib/firebase';
 import { ScientificPaper, Hypothesis, SpssAnalysisPackage } from '../types';
 import BloxBotDocumentExportModal, { BloxBotExportableDocument } from './BloxBotDocumentExportModal';
+import ExportDropdown from './ExportDropdown';
 
 interface RobloxGuideBotProps {
   currentTab: string;
@@ -97,6 +98,7 @@ export default function RobloxGuideBot({
   const [selectedOperation, setSelectedOperation] = useState<string>('spss_analysis');
   const [showOperationPicker, setShowOperationPicker] = useState(false);
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
+  const [docCustomInstructions, setDocCustomInstructions] = useState<string>('');
   const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
 
   // File Upload Reference
@@ -122,7 +124,7 @@ export default function RobloxGuideBot({
       operationType: 'System Briefing',
       originalFileName: 'Synapse_OS_BloxBot_Protocol.pdf',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      contentMarkdown: `# 🎓 Synapse OS • BloxBot Autonomous Research Suite\n\n## 🚀 System Architecture & Capabilities\nSynapse OS unites 3D Knowledge Graph Navigation, Multi-Agent Hypothesis Evolutionary Tournaments, and the IBM SPSS® Statistical Analysis Suite into a unified discovery engine.\n\n### 📄 Document Processing & Academic Export Features:\n- **Academic Thesis & Dissertation Proposals**: Ingest raw research documents and synthesize comprehensive 5-chapter dissertation drafts with research questions ($RQ_1, RQ_2, RQ_3$), APA 7th statistics, and defense preparation.\n- **IBM SPSS® Statistical Analysis**: Execute parametric and non-parametric hypothesis tests, generate SPSS syntax (.sps), and formulate APA 7th statistical statements.\n- **Evolutionary Hypothesis Synthesis**: Formulate high-novelty scientific hypotheses evaluated across multi-agent tournaments.\n- **Multi-Format Exporting**: Export all documents in Formal PDF, Markdown (.md), Plain Text (.txt), JSON Research Packages, IBM SPSS Syntax (.sps), CSV Catalogs, and HTML Print formats!`
+      contentMarkdown: `# Synapse OS - BloxBot Autonomous Research Suite\n\n## System Architecture & Scientific Capabilities\nSynapse OS unites 3D Knowledge Graph Navigation, Multi-Agent Hypothesis Evolutionary Tournaments, and the IBM SPSS Statistical Analysis Suite into a unified discovery engine.\n\n### Document Processing & Academic Export Features:\n- **Academic Thesis & Dissertation Proposals**: Ingest raw research documents and synthesize comprehensive 5-chapter dissertation drafts with research questions (RQ1, RQ2, RQ3), APA 7th statistics, and defense preparation.\n- **IBM SPSS Statistical Analysis**: Execute parametric and non-parametric hypothesis tests, generate SPSS syntax (.sps), and formulate APA 7th statistical statements.\n- **Evolutionary Hypothesis Synthesis**: Formulate high-novelty scientific hypotheses evaluated across multi-agent tournaments.\n- **Multi-Format Exporting**: Export all documents in Formal PDF, Markdown (.md), Plain Text (.txt), JSON Research Packages, IBM SPSS Syntax (.sps), CSV Catalogs, and HTML Print formats!`
     }
   ]);
 
@@ -430,6 +432,78 @@ export default function RobloxGuideBot({
     navigator.clipboard.writeText(text);
     setCopiedItemId(id);
     setTimeout(() => setCopiedItemId(null), 2000);
+  };
+
+  // Direct Format Downloader for Ingested Documents & Messages
+  const handleDirectExportDoc = (doc: BloxBotExportableDocument, format: 'csv' | 'json' | 'md' | 'pdf' | 'sps' | 'modal') => {
+    if (format === 'modal') {
+      const existing = exportedDocuments.find(d => d.id === doc.id);
+      if (!existing) {
+        setExportedDocuments(prev => [doc, ...prev]);
+      }
+      setExportSelectedDocId(doc.id);
+      setShowExportModal(true);
+      return;
+    }
+
+    if (format === 'json') {
+      const dataStr = JSON.stringify(doc, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${doc.title.replace(/[^a-zA-Z0-9_-]/g, '_')}.json`;
+      link.click();
+      return;
+    }
+
+    if (format === 'md') {
+      const blob = new Blob([doc.contentMarkdown], { type: 'text/markdown;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${doc.title.replace(/[^a-zA-Z0-9_-]/g, '_')}.md`;
+      link.click();
+      return;
+    }
+
+    if (format === 'csv') {
+      let csv = `"Document Title","Document Type","Operation","Timestamp"\n"${doc.title.replace(/"/g, '""')}","${doc.docType}","${doc.operationType}","${doc.timestamp}"\n\n"Content"\n"${doc.contentMarkdown.replace(/"/g, '""')}"`;
+      if (doc.spssPackage?.dataset) {
+        csv += '\n\n"--- SPSS Dataset Matrix ---"\n';
+        const vars = doc.spssPackage.dataset.variables;
+        csv += vars.map(v => v.name).join(',') + '\n';
+        doc.spssPackage.dataset.rows.forEach(r => {
+          csv += vars.map(v => r[v.name] !== undefined ? `"${r[v.name]}"` : `"${r[v.label] || ''}"`).join(',') + '\n';
+        });
+      }
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${doc.title.replace(/[^a-zA-Z0-9_-]/g, '_')}.csv`;
+      link.click();
+      return;
+    }
+
+    if (format === 'sps' && doc.spssPackage?.spssSyntaxScript) {
+      const blob = new Blob([doc.spssPackage.spssSyntaxScript], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${doc.title.replace(/[^a-zA-Z0-9_-]/g, '_')}_syntax.sps`;
+      link.click();
+      return;
+    }
+
+    if (format === 'pdf') {
+      const existing = exportedDocuments.find(d => d.id === doc.id);
+      if (!existing) {
+        setExportedDocuments(prev => [doc, ...prev]);
+      }
+      setExportSelectedDocId(doc.id);
+      setShowExportModal(true);
+    }
   };
 
   const handleSendTeamNotification = async (e: React.FormEvent) => {
@@ -843,33 +917,26 @@ export default function RobloxGuideBot({
                   {msg.sender === 'bloxbot' && (
                     <div className="mt-2 pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-1.5 text-[10px] font-mono">
                       <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => {
-                            const existingDoc = exportedDocuments.find(d => d.id === `msg_${msg.id}`);
-                            if (!existingDoc) {
-                              const dynamicDoc: BloxBotExportableDocument = {
-                                id: `msg_${msg.id}`,
-                                title: msg.attachedDocName ? `Analysis: ${msg.attachedDocName}` : `BloxBot Intelligence: ${msg.text.slice(0, 35)}...`,
-                                docType: 'BloxBot Output',
-                                operationType: msg.operationType || 'Research Analysis',
-                                originalFileName: msg.attachedDocName || 'BloxBot_Context',
-                                timestamp: msg.timestamp,
-                                contentMarkdown: msg.text,
-                                spssPackage: msg.spssPackage,
-                                hypothesis: msg.hypothesis,
-                                extractedEntities: msg.extractedEntities
-                              };
-                              setExportedDocuments(prev => [dynamicDoc, ...prev]);
-                            }
-                            setExportSelectedDocId(`msg_${msg.id}`);
-                            setShowExportModal(true);
+                        <ExportDropdown
+                          id={`msg-export-${msg.id}`}
+                          label="Export Output"
+                          onExport={(fmt) => {
+                            const msgDoc: BloxBotExportableDocument = {
+                              id: `msg_${msg.id}`,
+                              title: msg.attachedDocName ? `Analysis: ${msg.attachedDocName}` : `BloxBot Output: ${msg.text.slice(0, 35)}...`,
+                              docType: 'BloxBot Output',
+                              operationType: msg.operationType || 'Research Analysis',
+                              originalFileName: msg.attachedDocName || 'BloxBot_Context',
+                              timestamp: msg.timestamp,
+                              contentMarkdown: msg.text,
+                              spssPackage: msg.spssPackage,
+                              hypothesis: msg.hypothesis,
+                              extractedEntities: msg.extractedEntities
+                            };
+                            handleDirectExportDoc(msgDoc, fmt);
                           }}
-                          className="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
-                          title="Export this response as PDF, Markdown, Word, or JSON"
-                        >
-                          <Download className="w-3 h-3 text-emerald-400" />
-                          <span>Export Document</span>
-                        </button>
+                          includeSps={!!msg.spssPackage}
+                        />
 
                         <button
                           onClick={() => handleCopyText(`msg-${msg.id}`, msg.text)}
@@ -939,35 +1006,28 @@ export default function RobloxGuideBot({
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => {
-                      if (attachedDocMeta) {
-                        const dynamicDoc: BloxBotExportableDocument = {
-                          id: 'attached_current_file',
-                          title: `Draft Package: ${attachedDocMeta.name}`,
-                          docType: attachedDocMeta.type,
-                          operationType: selectedOperation,
-                          originalFileName: attachedDocMeta.name,
-                          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                          contentMarkdown: `# Attached Research Document: ${attachedDocMeta.name}\n- **Format:** ${attachedDocMeta.type}\n- **File Size:** ${attachedDocMeta.size}\n- **Configured Operation:** \`${selectedOperation.replace(/_/g, ' ').toUpperCase()}\`\n\n*Document ingested into Synapse OS BloxBot Workspace.*`
-                        };
-                        setExportedDocuments(prev => [dynamicDoc, ...prev.filter(d => d.id !== 'attached_current_file')]);
-                        setExportSelectedDocId('attached_current_file');
-                        setShowExportModal(true);
-                      }
+                  <ExportDropdown
+                    id="attached-doc-export-dropdown"
+                    label="Export"
+                    onExport={(fmt) => {
+                      const dynamicDoc: BloxBotExportableDocument = {
+                        id: 'attached_current_file',
+                        title: `Draft Package: ${attachedDocMeta.name}`,
+                        docType: attachedDocMeta.type,
+                        operationType: selectedOperation,
+                        originalFileName: attachedDocMeta.name,
+                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        contentMarkdown: `# Attached Research Document: ${attachedDocMeta.name}\n- **Format:** ${attachedDocMeta.type}\n- **File Size:** ${attachedDocMeta.size}\n- **Configured Operation:** \`${selectedOperation.replace(/_/g, ' ').toUpperCase()}\`${docCustomInstructions ? `\n- **Custom Instruction:** "${docCustomInstructions}"` : ''}\n\n*Document ingested into Synapse OS BloxBot Workspace.*`
+                      };
+                      handleDirectExportDoc(dynamicDoc, fmt);
                     }}
-                    className="px-2 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                    title="Export / Download Document Summary"
-                  >
-                    <Download className="w-3 h-3 text-emerald-400" />
-                    <span>Export</span>
-                  </button>
+                  />
 
                   <button
                     onClick={() => setShowOperationPicker(!showOperationPicker)}
                     className="px-2 py-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 cursor-pointer"
                   >
-                    <span>{showOperationPicker ? 'Hide Operations' : 'Choose Operation'}</span>
+                    <span>{showOperationPicker ? 'Hide Controls' : 'Configure & Run'}</span>
                   </button>
                   <button
                     onClick={handleRemoveFile}
@@ -979,32 +1039,83 @@ export default function RobloxGuideBot({
                 </div>
               </div>
 
-              {/* Quick Operation Picker Matrix */}
+              {/* Custom Instructions & Quick Operation Picker Matrix */}
               {showOperationPicker && (
-                <div className="p-2 bg-[#080A0F] border border-slate-800 rounded-xl grid grid-cols-2 gap-1.5 animate-in fade-in duration-150">
-                  {operationsList.map((op) => {
-                    const OpIcon = op.icon;
-                    return (
-                      <button
-                        key={op.key}
-                        onClick={() => {
-                          setSelectedOperation(op.key);
-                          handleExecuteDocOperation(op.key);
-                        }}
-                        className="p-1.5 rounded-lg bg-[#111622] hover:bg-sky-950/60 border border-slate-800 hover:border-sky-500/50 text-left flex items-start gap-1.5 transition-all group"
-                      >
-                        <OpIcon className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
-                        <div className="min-w-0">
-                          <div className="text-[10px] font-bold font-mono text-slate-200 group-hover:text-white truncate">
-                            {op.label}
-                          </div>
-                          <div className="text-[8px] text-slate-400 font-mono line-clamp-1">
-                            {op.desc}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                <div className="p-2.5 bg-[#080A0F] border border-slate-800 rounded-xl flex flex-col gap-2.5 animate-in fade-in duration-150">
+                  {/* Custom Instruction Box */}
+                  <div className="flex flex-col gap-1.5 bg-[#10141e] p-2 rounded-lg border border-sky-500/30">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-mono font-bold text-sky-300 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-amber-400" />
+                        Custom Instruction for Ingested Document:
+                      </label>
+                      <span className="text-[9px] font-mono text-slate-400">Optional prompt overrides</span>
+                    </div>
+
+                    <textarea
+                      value={docCustomInstructions}
+                      onChange={(e) => setDocCustomInstructions(e.target.value)}
+                      placeholder="e.g. 'Focus on sample size calculation, check for ANOVA assumptions, and write APA 7th style results...'"
+                      rows={2}
+                      className="w-full bg-[#07080A] border border-slate-700 text-slate-200 text-[11px] font-sans rounded-md p-1.5 focus:outline-none focus:border-sky-500 resize-none"
+                    />
+
+                    {/* Quick suggestion prompt chips */}
+                    <div className="flex flex-wrap items-center gap-1">
+                      {[
+                        'Strict APA 7th Statistical Output',
+                        'Extract 3 Testable Hypotheses',
+                        'Check ANOVA / Normality Assumptions',
+                        'Synthesize Executive 5-Point Summary'
+                      ].map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => setDocCustomInstructions(chip)}
+                          className="px-1.5 py-0.5 rounded bg-slate-800/90 hover:bg-sky-500/20 text-[9px] font-mono text-slate-300 hover:text-sky-300 border border-slate-700 cursor-pointer transition-colors"
+                        >
+                          + {chip}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Operation Picker Grid */}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[9.5px] font-mono uppercase text-slate-400 tracking-wider">
+                      Select Autonomous BloxBot Operation to Run:
+                    </span>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {operationsList.map((op) => {
+                        const OpIcon = op.icon;
+                        const isCurrent = selectedOperation === op.key;
+                        return (
+                          <button
+                            key={op.key}
+                            onClick={() => {
+                              setSelectedOperation(op.key);
+                              handleExecuteDocOperation(op.key, docCustomInstructions || undefined);
+                            }}
+                            className={`p-1.5 rounded-lg border text-left flex items-start gap-1.5 transition-all group cursor-pointer ${
+                              isCurrent
+                                ? 'bg-sky-950/80 border-sky-500 text-white'
+                                : 'bg-[#111622] hover:bg-sky-950/60 border-slate-800 hover:border-sky-500/50'
+                            }`}
+                          >
+                            <OpIcon className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-bold font-mono text-slate-200 group-hover:text-white truncate">
+                                {op.label}
+                              </div>
+                              <div className="text-[8px] text-slate-400 font-mono line-clamp-1">
+                                {op.desc}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
