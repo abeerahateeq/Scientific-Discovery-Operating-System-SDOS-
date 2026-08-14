@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { UserProfile } from '../lib/firebase';
 import { ScientificPaper, Hypothesis, SpssAnalysisPackage } from '../types';
+import BloxBotDocumentExportModal, { BloxBotExportableDocument } from './BloxBotDocumentExportModal';
 
 interface RobloxGuideBotProps {
   currentTab: string;
@@ -109,6 +110,21 @@ export default function RobloxGuideBot({
   // Autonomous Research Execution State
   const [isAutoResearching, setIsAutoResearching] = useState(false);
   const [researchProgressStep, setResearchProgressStep] = useState<string>('');
+
+  // Document Export State
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportSelectedDocId, setExportSelectedDocId] = useState<string | null>(null);
+  const [exportedDocuments, setExportedDocuments] = useState<BloxBotExportableDocument[]>([
+    {
+      id: 'doc_welcome_overview',
+      title: 'BloxBot Master Research Dossier & Academic Protocol',
+      docType: 'System Protocol',
+      operationType: 'System Briefing',
+      originalFileName: 'Synapse_OS_BloxBot_Protocol.pdf',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      contentMarkdown: `# 🎓 Synapse OS • BloxBot Autonomous Research Suite\n\n## 🚀 System Architecture & Capabilities\nSynapse OS unites 3D Knowledge Graph Navigation, Multi-Agent Hypothesis Evolutionary Tournaments, and the IBM SPSS® Statistical Analysis Suite into a unified discovery engine.\n\n### 📄 Document Processing & Academic Export Features:\n- **Academic Thesis & Dissertation Proposals**: Ingest raw research documents and synthesize comprehensive 5-chapter dissertation drafts with research questions ($RQ_1, RQ_2, RQ_3$), APA 7th statistics, and defense preparation.\n- **IBM SPSS® Statistical Analysis**: Execute parametric and non-parametric hypothesis tests, generate SPSS syntax (.sps), and formulate APA 7th statistical statements.\n- **Evolutionary Hypothesis Synthesis**: Formulate high-novelty scientific hypotheses evaluated across multi-agent tournaments.\n- **Multi-Format Exporting**: Export all documents in Formal PDF, Markdown (.md), Plain Text (.txt), JSON Research Packages, IBM SPSS Syntax (.sps), CSV Catalogs, and HTML Print formats!`
+    }
+  ]);
 
   // Team Notification Modal state
   const [showNotifyModal, setShowNotifyModal] = useState(false);
@@ -299,6 +315,21 @@ export default function RobloxGuideBot({
       setMessages(prev => [...prev, botMsg]);
       setEmotion(data.emotion || 'happy');
       if (data.speechText) speakText(data.speechText);
+
+      // Add to Exported Documents library
+      const newExportDoc: BloxBotExportableDocument = {
+        id: `doc_${Date.now()}`,
+        title: data.docName ? `${opDisplay}: ${data.docName}` : `BloxBot Analysis Report (${opDisplay})`,
+        docType: data.docType || 'Research Document',
+        operationType: data.operation || operationKey,
+        originalFileName: data.docName || fileToProcess?.name || 'Attached Document',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        contentMarkdown: data.answer || '',
+        spssPackage: data.spssPackage,
+        hypothesis: data.hypothesis,
+        extractedEntities: data.extractedEntities
+      };
+      setExportedDocuments(prev => [newExportDoc, ...prev]);
 
       // Trigger cross-component updates
       if (data.hypothesis && onHypothesisGenerated) {
@@ -591,6 +622,19 @@ export default function RobloxGuideBot({
             </div>
 
             <div className="flex items-center gap-1.5">
+              {/* Document Export Button */}
+              <button
+                onClick={() => {
+                  setExportSelectedDocId(null);
+                  setShowExportModal(true);
+                }}
+                className="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 transition-all"
+                title="Export BloxBot Documents & Reports (PDF, Word, MD, JSON)"
+              >
+                <Download className="w-3 h-3 text-emerald-400" />
+                <span>Export ({exportedDocuments.length})</span>
+              </button>
+
               {/* Voice Narration Audio Toggle */}
               <button
                 onClick={() => {
@@ -633,6 +677,18 @@ export default function RobloxGuideBot({
             >
               <Paperclip className="w-3 h-3 text-sky-400" />
               <span>Add Document</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setExportSelectedDocId(null);
+                setShowExportModal(true);
+              }}
+              className="shrink-0 px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 transition-colors"
+              title="Export all documents and manuscripts"
+            >
+              <Download className="w-3 h-3 text-emerald-400" />
+              <span>Export Documents ({exportedDocuments.length})</span>
             </button>
             
             <button
@@ -783,19 +839,58 @@ export default function RobloxGuideBot({
                     </div>
                   )}
 
-                  {/* Fallback / Notify Team action chip */}
-                  {msg.sender === 'bloxbot' && msg.canNotifyTeam && (
-                    <div className="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] font-mono text-slate-400">
-                      <span>Didn't find what you need?</span>
-                      <button
-                        onClick={() => {
-                          setNotifyMessage(`Question regarding: "${msg.text.slice(0, 60)}..."`);
-                          setShowNotifyModal(true);
-                        }}
-                        className="text-rose-400 hover:text-rose-300 underline font-bold flex items-center gap-1"
-                      >
-                        <AlertCircle className="w-3 h-3" /> Notify Team
-                      </button>
+                  {/* BloxBot Message Action & Export Bar */}
+                  {msg.sender === 'bloxbot' && (
+                    <div className="mt-2 pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-1.5 text-[10px] font-mono">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            const existingDoc = exportedDocuments.find(d => d.id === `msg_${msg.id}`);
+                            if (!existingDoc) {
+                              const dynamicDoc: BloxBotExportableDocument = {
+                                id: `msg_${msg.id}`,
+                                title: msg.attachedDocName ? `Analysis: ${msg.attachedDocName}` : `BloxBot Intelligence: ${msg.text.slice(0, 35)}...`,
+                                docType: 'BloxBot Output',
+                                operationType: msg.operationType || 'Research Analysis',
+                                originalFileName: msg.attachedDocName || 'BloxBot_Context',
+                                timestamp: msg.timestamp,
+                                contentMarkdown: msg.text,
+                                spssPackage: msg.spssPackage,
+                                hypothesis: msg.hypothesis,
+                                extractedEntities: msg.extractedEntities
+                              };
+                              setExportedDocuments(prev => [dynamicDoc, ...prev]);
+                            }
+                            setExportSelectedDocId(`msg_${msg.id}`);
+                            setShowExportModal(true);
+                          }}
+                          className="px-2 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Export this response as PDF, Markdown, Word, or JSON"
+                        >
+                          <Download className="w-3 h-3 text-emerald-400" />
+                          <span>Export Document</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleCopyText(`msg-${msg.id}`, msg.text)}
+                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                        >
+                          {copiedItemId === `msg-${msg.id}` ? <CheckCircle className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span>Copy</span>
+                        </button>
+                      </div>
+
+                      {msg.canNotifyTeam && (
+                        <button
+                          onClick={() => {
+                            setNotifyMessage(`Question regarding: "${msg.text.slice(0, 60)}..."`);
+                            setShowNotifyModal(true);
+                          }}
+                          className="text-rose-400 hover:text-rose-300 underline font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <AlertCircle className="w-3 h-3" /> Notify Team
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -845,14 +940,38 @@ export default function RobloxGuideBot({
 
                 <div className="flex items-center gap-1.5">
                   <button
+                    onClick={() => {
+                      if (attachedDocMeta) {
+                        const dynamicDoc: BloxBotExportableDocument = {
+                          id: 'attached_current_file',
+                          title: `Draft Package: ${attachedDocMeta.name}`,
+                          docType: attachedDocMeta.type,
+                          operationType: selectedOperation,
+                          originalFileName: attachedDocMeta.name,
+                          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                          contentMarkdown: `# Attached Research Document: ${attachedDocMeta.name}\n- **Format:** ${attachedDocMeta.type}\n- **File Size:** ${attachedDocMeta.size}\n- **Configured Operation:** \`${selectedOperation.replace(/_/g, ' ').toUpperCase()}\`\n\n*Document ingested into Synapse OS BloxBot Workspace.*`
+                        };
+                        setExportedDocuments(prev => [dynamicDoc, ...prev.filter(d => d.id !== 'attached_current_file')]);
+                        setExportSelectedDocId('attached_current_file');
+                        setShowExportModal(true);
+                      }
+                    }}
+                    className="px-2 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Export / Download Document Summary"
+                  >
+                    <Download className="w-3 h-3 text-emerald-400" />
+                    <span>Export</span>
+                  </button>
+
+                  <button
                     onClick={() => setShowOperationPicker(!showOperationPicker)}
-                    className="px-2 py-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1"
+                    className="px-2 py-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 cursor-pointer"
                   >
                     <span>{showOperationPicker ? 'Hide Operations' : 'Choose Operation'}</span>
                   </button>
                   <button
                     onClick={handleRemoveFile}
-                    className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                    className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                     title="Remove Document"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1038,6 +1157,15 @@ export default function RobloxGuideBot({
           </div>
         </div>
       )}
+
+      {/* BLOXBOT DOCUMENT EXPORT MODAL */}
+      <BloxBotDocumentExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        documents={exportedDocuments}
+        initialSelectedDocId={exportSelectedDocId}
+        userName={userProfile?.displayName || userProfile?.email?.split('@')[0] || "Scholar"}
+      />
     </>
   );
 }
