@@ -37,12 +37,26 @@ import {
   FileUp,
   Download,
   Trash2,
-  GraduationCap
+  GraduationCap,
+  Files,
+  Plus,
+  FolderArchive
 } from 'lucide-react';
 import { UserProfile } from '../lib/firebase';
 import { ScientificPaper, Hypothesis, SpssAnalysisPackage } from '../types';
 import BloxBotDocumentExportModal, { BloxBotExportableDocument } from './BloxBotDocumentExportModal';
 import ExportDropdown from './ExportDropdown';
+
+export interface AttachedDocItem {
+  id: string;
+  file: File;
+  name: string;
+  size: string;
+  sizeBytes: number;
+  ext: string;
+  typeLabel: string;
+  badgeColor: string;
+}
 
 interface RobloxGuideBotProps {
   currentTab: string;
@@ -63,6 +77,8 @@ interface ChatMessage {
   isResearchResult?: boolean;
   actionPayload?: any;
   attachedDocName?: string;
+  attachedDocNames?: string[];
+  docCount?: number;
   operationType?: string;
   spssPackage?: any;
   hypothesis?: any;
@@ -91,15 +107,62 @@ export default function RobloxGuideBot({
   const [inputQuery, setInputQuery] = useState('');
   const [loading, setLoading] = useState(false);
   
-  // Document Attachment State
-  const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  const [attachedDocMeta, setAttachedDocMeta] = useState<{ name: string; size: string; type: string } | null>(null);
+  // Document Attachment State (Supports Multiple Files & Any Format)
+  const [attachedFiles, setAttachedFiles] = useState<AttachedDocItem[]>([]);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [selectedOperation, setSelectedOperation] = useState<string>('spss_analysis');
   const [showOperationPicker, setShowOperationPicker] = useState(false);
   const [showLibraryPicker, setShowLibraryPicker] = useState(false);
   const [docCustomInstructions, setDocCustomInstructions] = useState<string>('');
   const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
+
+  // Helper to format attached document items with dynamic icons/badges
+  const createAttachedDocItem = (file: File): AttachedDocItem => {
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'txt';
+    const sizeKb = (file.size / 1024).toFixed(1);
+    const sizeMb = (file.size / 1024 / 1024).toFixed(2);
+    const size = file.size > 1024 * 1024 ? `${sizeMb} MB` : `${sizeKb} KB`;
+
+    let typeLabel = "Document";
+    let badgeColor = "bg-slate-500/20 text-slate-300 border-slate-500/40";
+
+    if (ext === 'pdf') {
+      typeLabel = "PDF";
+      badgeColor = "bg-rose-500/20 text-rose-300 border-rose-500/40";
+    } else if (ext === 'docx' || ext === 'doc' || ext === 'dotx') {
+      typeLabel = "Word";
+      badgeColor = "bg-blue-500/20 text-blue-300 border-blue-500/40";
+    } else if (ext === 'csv' || ext === 'tsv') {
+      typeLabel = "CSV";
+      badgeColor = "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      typeLabel = "Excel";
+      badgeColor = "bg-green-500/20 text-green-300 border-green-500/40";
+    } else if (ext === 'sav' || ext === 'sps' || ext === 'por' || ext === 'dta') {
+      typeLabel = "SPSS";
+      badgeColor = "bg-indigo-500/20 text-indigo-300 border-indigo-500/40";
+    } else if (['py', 'r', 'js', 'ts', 'm', 'cpp', 'c', 'java', 'sh', 'sql'].includes(ext)) {
+      typeLabel = ext.toUpperCase();
+      badgeColor = "bg-cyan-500/20 text-cyan-300 border-cyan-500/40";
+    } else if (['md', 'tex', 'bib', 'latex', 'rtf'].includes(ext)) {
+      typeLabel = ext.toUpperCase();
+      badgeColor = "bg-purple-500/20 text-purple-300 border-purple-500/40";
+    } else if (['json', 'xml', 'yaml', 'yml', 'html'].includes(ext)) {
+      typeLabel = ext.toUpperCase();
+      badgeColor = "bg-amber-500/20 text-amber-300 border-amber-500/40";
+    }
+
+    return {
+      id: `doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      file,
+      name: file.name,
+      size,
+      sizeBytes: file.size,
+      ext,
+      typeLabel,
+      badgeColor
+    };
+  };
 
   // File Upload Reference
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -213,71 +276,113 @@ export default function RobloxGuideBot({
     }
   };
 
-  // Handle File Selection
-  const handleFileSelect = (file: File) => {
-    if (!file) return;
-    setAttachedFile(file);
-    const sizeKb = (file.size / 1024).toFixed(1);
-    const sizeMb = (file.size / 1024 / 1024).toFixed(2);
-    const sizeStr = file.size > 1024 * 1024 ? `${sizeMb} MB` : `${sizeKb} KB`;
-    
-    let typeLabel = "Document";
-    const ext = file.name.split('.').pop()?.toLowerCase() || '';
-    if (ext === 'pdf') typeLabel = 'PDF';
-    else if (ext === 'docx' || ext === 'doc') typeLabel = 'Word DOCX';
-    else if (ext === 'csv' || ext === 'tsv') typeLabel = 'Dataset (CSV)';
-    else if (ext === 'txt' || ext === 'md' || ext === 'json') typeLabel = ext.toUpperCase();
+  // Handle Multiple File Selection (Any Format)
+  const handleFileSelect = (files: FileList | File[] | File) => {
+    const incomingFiles: File[] = [];
+    if (files instanceof FileList) {
+      for (let i = 0; i < files.length; i++) {
+        incomingFiles.push(files[i]);
+      }
+    } else if (Array.isArray(files)) {
+      incomingFiles.push(...files);
+    } else if (files) {
+      incomingFiles.push(files);
+    }
 
-    setAttachedDocMeta({
-      name: file.name,
-      size: sizeStr,
-      type: typeLabel
+    if (incomingFiles.length === 0) return;
+
+    const newItems = incomingFiles.map(file => createAttachedDocItem(file));
+    
+    setAttachedFiles(prev => {
+      // Avoid duplicate exact filenames
+      const existingNames = new Set(prev.map(p => p.name));
+      const filteredNew = newItems.filter(item => !existingNames.has(item.name));
+      return [...prev, ...filteredNew];
     });
+
     setShowOperationPicker(true);
-    speakText(`Document ${file.name} attached! Select an operation or type your request.`);
+    if (incomingFiles.length === 1) {
+      speakText(`Document ${incomingFiles[0].name} attached! Select an operation or type your request.`);
+    } else {
+      speakText(`${incomingFiles.length} research documents attached! Select an operation to analyze them together.`);
+    }
   };
 
-  // Remove Attached File
-  const handleRemoveFile = () => {
-    setAttachedFile(null);
-    setAttachedDocMeta(null);
+  // Remove Single Attached File
+  const handleRemoveFile = (id: string) => {
+    setAttachedFiles(prev => {
+      const updated = prev.filter(f => f.id !== id);
+      if (updated.length === 0) {
+        setShowOperationPicker(false);
+      }
+      return updated;
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Remove All Attached Files
+  const handleClearAllFiles = () => {
+    setAttachedFiles([]);
     setShowOperationPicker(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Process Document with Selected Operation
+  // Process Document(s) with Selected Operation
   const handleExecuteDocOperation = async (operationKey: string, customPrompt?: string) => {
-    if (!attachedFile && !inputQuery.trim()) return;
+    if (attachedFiles.length === 0 && !inputQuery.trim()) return;
 
     setIsAutoResearching(true);
     setEmotion('thinking');
     setShowOperationPicker(false);
 
-    const fileToProcess = attachedFile;
+    const filesToProcess = [...attachedFiles];
     const promptToSend = customPrompt !== undefined ? customPrompt : inputQuery;
-    const docName = fileToProcess ? fileToProcess.name : "Active Ingested Context";
+    const isMultiDoc = filesToProcess.length > 1;
+    const docNamesList = filesToProcess.map(f => f.name);
+    const docNameSummary = filesToProcess.length === 0 
+      ? "Active Ingested Context" 
+      : filesToProcess.length === 1 
+        ? filesToProcess[0].name 
+        : `${filesToProcess.length} Research Documents (${filesToProcess.map(f => f.name).join(', ')})`;
+    
     const opDisplay = operationKey.replace(/_/g, ' ').toUpperCase();
 
+    // Calculate total size
+    const totalBytes = filesToProcess.reduce((sum, f) => sum + f.sizeBytes, 0);
+    const totalSizeStr = totalBytes > 1024 * 1024 
+      ? `${(totalBytes / 1024 / 1024).toFixed(2)} MB` 
+      : `${(totalBytes / 1024).toFixed(1)} KB`;
+
     // Add user message
-    const userMsgText = fileToProcess
-      ? `📄 **Attached Document:** \`${fileToProcess.name}\` (${attachedDocMeta?.size || 'Attached'})\n⚡ **Requested BloxBot Operation:** \`${opDisplay}\`${promptToSend ? `\n💬 **Instruction:** "${promptToSend}"` : ''}`
-      : `⚡ **Requested BloxBot Operation on Literature:** \`${opDisplay}\`\n💬 **Instruction:** "${promptToSend}"`;
+    let userMsgText = "";
+    if (filesToProcess.length === 1) {
+      userMsgText = `📄 **Attached Document:** \`${filesToProcess[0].name}\` (${filesToProcess[0].size})\n⚡ **Requested BloxBot Operation:** \`${opDisplay}\`${promptToSend ? `\n💬 **Instruction:** "${promptToSend}"` : ''}`;
+    } else if (filesToProcess.length > 1) {
+      userMsgText = `📚 **Attached ${filesToProcess.length} Documents** (${totalSizeStr}):\n${filesToProcess.map((f, i) => `  ${i + 1}. \`${f.name}\` (${f.typeLabel}, ${f.size})`).join('\n')}\n⚡ **Requested BloxBot Multi-Doc Operation:** \`${opDisplay}\`${promptToSend ? `\n💬 **Instruction:** "${promptToSend}"` : ''}`;
+    } else {
+      userMsgText = `⚡ **Requested BloxBot Operation on Literature:** \`${opDisplay}\`\n💬 **Instruction:** "${promptToSend}"`;
+    }
 
     const userMsg: ChatMessage = {
       id: `usr_doc_${Date.now()}`,
       sender: 'user',
       text: userMsgText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      attachedDocName: fileToProcess?.name,
+      attachedDocName: filesToProcess.length === 1 ? filesToProcess[0].name : undefined,
+      attachedDocNames: docNamesList,
+      docCount: filesToProcess.length,
       operationType: operationKey
     };
 
     setMessages(prev => [...prev, userMsg]);
     setInputQuery('');
-    setAttachedFile(null);
-    setAttachedDocMeta(null);
+    setAttachedFiles([]);
 
-    setResearchProgressStep(`Step 1: Ingesting "${docName}" buffer and mapping variables...`);
+    setResearchProgressStep(
+      isMultiDoc 
+        ? `Step 1: Ingesting & harmonizing ${filesToProcess.length} attached documents (${totalSizeStr})...`
+        : `Step 1: Ingesting "${docNameSummary}" buffer and mapping variables...`
+    );
     await new Promise(r => setTimeout(r, 450));
 
     setResearchProgressStep(`Step 2: Executing ${opDisplay} multi-agent reasoning engine...`);
@@ -285,9 +390,10 @@ export default function RobloxGuideBot({
 
     try {
       const formData = new FormData();
-      if (fileToProcess) {
-        formData.append("document", fileToProcess);
-      }
+      // Append all attached files into formData using 'documents'
+      filesToProcess.forEach(item => {
+        formData.append("documents", item.file);
+      });
       formData.append("operation", operationKey);
       formData.append("userPrompt", promptToSend);
 
@@ -303,9 +409,11 @@ export default function RobloxGuideBot({
       const botMsg: ChatMessage = {
         id: `bot_doc_${Date.now()}`,
         sender: 'bloxbot',
-        text: data.answer || "Bleep bloop! Successfully processed document.",
+        text: data.answer || "Bleep bloop! Successfully processed document(s).",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         attachedDocName: data.docName,
+        attachedDocNames: data.docNames || docNamesList,
+        docCount: data.docCount || filesToProcess.length,
         operationType: data.operation,
         spssPackage: data.spssPackage,
         hypothesis: data.hypothesis,
@@ -321,10 +429,12 @@ export default function RobloxGuideBot({
       // Add to Exported Documents library
       const newExportDoc: BloxBotExportableDocument = {
         id: `doc_${Date.now()}`,
-        title: data.docName ? `${opDisplay}: ${data.docName}` : `BloxBot Analysis Report (${opDisplay})`,
-        docType: data.docType || 'Research Document',
+        title: data.docName ? `${opDisplay}: ${data.docName}` : `BloxBot Multi-Doc Analysis Report (${opDisplay})`,
+        docType: data.docType || (isMultiDoc ? 'Multi-Document Dossier' : 'Research Document'),
         operationType: data.operation || operationKey,
-        originalFileName: data.docName || fileToProcess?.name || 'Attached Document',
+        originalFileName: data.docName || docNameSummary,
+        docNames: data.docNames || docNamesList,
+        docCount: data.docCount || filesToProcess.length,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         contentMarkdown: data.answer || '',
         spssPackage: data.spssPackage,
@@ -343,7 +453,7 @@ export default function RobloxGuideBot({
       if (onTriggerNotification) {
         onTriggerNotification(
           "BloxBot Document Operation Complete",
-          `Finished ${opDisplay} on ${docName}!`,
+          `Finished ${opDisplay} on ${docNameSummary}!`,
           "system"
         );
       }
@@ -352,7 +462,7 @@ export default function RobloxGuideBot({
       const errorMsg: ChatMessage = {
         id: `bot_err_${Date.now()}`,
         sender: 'bloxbot',
-        text: `⚡ **BloxBot Processing Glitch!** Could not complete ${opDisplay} on "${docName}". You can try again with a cleaner PDF/DOCX or click **'Notify Team'** below!`,
+        text: `⚡ **BloxBot Processing Glitch!** Could not complete ${opDisplay} on "${docNameSummary}". You can try again with a cleaner document or click **'Notify Team'** below!`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         canNotifyTeam: true
       };
@@ -367,10 +477,10 @@ export default function RobloxGuideBot({
   // Standard Ask BloxBot
   const handleAsk = async (queryText?: string) => {
     const q = queryText || inputQuery;
-    if ((!q.trim() && !attachedFile) || loading || isAutoResearching) return;
+    if ((!q.trim() && attachedFiles.length === 0) || loading || isAutoResearching) return;
 
-    if (attachedFile) {
-      // If a file is attached and user hits enter, process it with selected operation or custom query
+    if (attachedFiles.length > 0) {
+      // If files are attached and user hits enter, process them with selected operation or custom query
       handleExecuteDocOperation(selectedOperation || 'custom_query', q);
       return;
     }
@@ -571,14 +681,15 @@ export default function RobloxGuideBot({
 
   return (
     <>
-      {/* Hidden File Input for Document Selection */}
+      {/* Hidden File Input for Multiple Document Selection (Any Format) */}
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.docx,.doc,.txt,.csv,.tsv,.json,.md,.sps"
+        multiple
+        accept="*/*"
         onChange={(e) => {
-          if (e.target.files && e.target.files[0]) {
-            handleFileSelect(e.target.files[0]);
+          if (e.target.files && e.target.files.length > 0) {
+            handleFileSelect(e.target.files);
           }
         }}
         className="hidden"
@@ -593,7 +704,7 @@ export default function RobloxGuideBot({
             className="mb-2 bg-[#12151E] border border-sky-500/40 text-slate-200 text-[11px] font-mono px-3 py-1.5 rounded-2xl shadow-xl flex items-center gap-2 cursor-pointer hover:border-sky-400 hover:scale-105 transition-all group animate-bounce"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-            <span>🎙️ Ask <b>BloxBot</b> or Add Documents! 📄</span>
+            <span>🎙️ Ask <b>BloxBot</b> or Attach Documents! 📄</span>
             <ChevronRight className="w-3.5 h-3.5 text-sky-400 group-hover:translate-x-0.5 transition-transform" />
           </div>
         )}
@@ -602,7 +713,7 @@ export default function RobloxGuideBot({
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="relative group p-1.5 rounded-2xl bg-gradient-to-br from-sky-600 via-indigo-600 to-purple-600 border-2 border-sky-400/80 shadow-2xl shadow-sky-950/80 hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center justify-center"
-          title="Open Roblox BloxBot Assistant (Document & Voice Enabled)"
+          title="Open Roblox BloxBot Assistant (Multi-Document & Voice Enabled)"
         >
           <div className="relative w-12 h-12 bg-[#0D111A] rounded-xl border border-sky-400/50 flex flex-col items-center justify-center overflow-hidden">
             {/* Antenna block */}
@@ -649,8 +760,8 @@ export default function RobloxGuideBot({
           onDrop={(e) => {
             e.preventDefault();
             setIsDraggingFile(false);
-            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-              handleFileSelect(e.dataTransfer.files[0]);
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              handleFileSelect(e.dataTransfer.files);
             }
           }}
           className="fixed bottom-20 right-4 sm:right-6 w-[95vw] sm:w-[500px] max-h-[660px] h-[86vh] bg-[#0A0C11] border-2 border-sky-500/40 rounded-3xl shadow-2xl z-50 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200"
@@ -662,10 +773,10 @@ export default function RobloxGuideBot({
                 <FileUp className="w-7 h-7" />
               </div>
               <h4 className="text-sm font-bold text-white font-mono uppercase tracking-wider mb-1">
-                Drop Research Document Here
+                Drop Research Documents Here
               </h4>
               <p className="text-xs text-sky-300 font-mono">
-                BloxBot supports PDF, Word (.docx), CSV, TSV, TXT, JSON
+                Attach multiple files at once in ANY format (PDF, DOCX, XLSX, SPSS .SAV, CSV, JSON, MD, TXT, LaTeX, Code)
               </p>
             </div>
           )}
@@ -809,12 +920,19 @@ export default function RobloxGuideBot({
                   <span>{msg.sender === 'user' ? 'You' : 'BloxBot Guide'}</span>
                   <span>•</span>
                   <span>{msg.timestamp}</span>
-                  {msg.attachedDocName && (
+                  {msg.attachedDocNames && msg.attachedDocNames.length > 1 ? (
+                    <>
+                      <span>•</span>
+                      <span className="text-sky-400 font-bold bg-sky-500/10 px-1.5 py-0.5 rounded border border-sky-500/20">
+                        📚 {msg.attachedDocNames.length} Documents Attached
+                      </span>
+                    </>
+                  ) : msg.attachedDocName ? (
                     <>
                       <span>•</span>
                       <span className="text-sky-400 font-bold">📄 {msg.attachedDocName}</span>
                     </>
-                  )}
+                  ) : null}
                 </div>
 
                 <div
@@ -923,10 +1041,16 @@ export default function RobloxGuideBot({
                           onExport={(fmt) => {
                             const msgDoc: BloxBotExportableDocument = {
                               id: `msg_${msg.id}`,
-                              title: msg.attachedDocName ? `Analysis: ${msg.attachedDocName}` : `BloxBot Output: ${msg.text.slice(0, 35)}...`,
-                              docType: 'BloxBot Output',
+                              title: msg.attachedDocNames && msg.attachedDocNames.length > 1
+                                ? `Corpus Analysis (${msg.attachedDocNames.length} Files): ${msg.text.slice(0, 30)}...`
+                                : msg.attachedDocName 
+                                  ? `Analysis: ${msg.attachedDocName}` 
+                                  : `BloxBot Output: ${msg.text.slice(0, 35)}...`,
+                              docType: msg.attachedDocNames && msg.attachedDocNames.length > 1 ? 'Multi-Document Report' : 'BloxBot Output',
                               operationType: msg.operationType || 'Research Analysis',
-                              originalFileName: msg.attachedDocName || 'BloxBot_Context',
+                              originalFileName: msg.attachedDocNames?.join(', ') || msg.attachedDocName || 'BloxBot_Context',
+                              docNames: msg.attachedDocNames,
+                              docCount: msg.docCount || (msg.attachedDocNames ? msg.attachedDocNames.length : undefined),
                               timestamp: msg.timestamp,
                               contentMarkdown: msg.text,
                               spssPackage: msg.spssPackage,
@@ -987,37 +1111,60 @@ export default function RobloxGuideBot({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* ATTACHED DOCUMENT PREVIEW BAR */}
-          {attachedDocMeta && (
+          {/* MULTI-DOCUMENT ATTACHMENT PREVIEW BAR */}
+          {attachedFiles.length > 0 && (
             <div className="p-2.5 bg-[#0F1420] border-t border-sky-500/30 flex flex-col gap-2">
+              {/* Header Bar */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400 shrink-0">
-                    <FileText className="w-4 h-4" />
+                  <div className="w-7 h-7 rounded-lg bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400 shrink-0 font-mono font-extrabold text-xs">
+                    {attachedFiles.length > 1 ? (
+                      <Files className="w-4 h-4" />
+                    ) : (
+                      <FileText className="w-4 h-4" />
+                    )}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[11px] font-mono text-white font-bold truncate max-w-[240px]">
-                      {attachedDocMeta.name}
+                    <p className="text-[11px] font-mono text-white font-bold flex items-center gap-1.5">
+                      <span>Attached Research Documents</span>
+                      <span className="bg-sky-500/30 text-sky-300 border border-sky-400/40 text-[9px] px-1.5 py-0.2 rounded-full font-bold">
+                        {attachedFiles.length} file{attachedFiles.length > 1 ? 's' : ''}
+                      </span>
                     </p>
                     <p className="text-[9px] font-mono text-slate-400">
-                      {attachedDocMeta.type} • {attachedDocMeta.size}
+                      Total: {(attachedFiles.reduce((sum, f) => sum + f.sizeBytes, 0) / 1024 > 1024 
+                        ? `${(attachedFiles.reduce((sum, f) => sum + f.sizeBytes, 0) / 1024 / 1024).toFixed(2)} MB` 
+                        : `${(attachedFiles.reduce((sum, f) => sum + f.sizeBytes, 0) / 1024).toFixed(1)} KB`)} • Any format supported
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 rounded-lg text-[10px] font-mono flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Add more files"
+                  >
+                    <Plus className="w-3 h-3 text-sky-400" />
+                    <span className="hidden sm:inline">Add More</span>
+                  </button>
+
                   <ExportDropdown
                     id="attached-doc-export-dropdown"
                     label="Export"
                     onExport={(fmt) => {
                       const dynamicDoc: BloxBotExportableDocument = {
                         id: 'attached_current_file',
-                        title: `Draft Package: ${attachedDocMeta.name}`,
-                        docType: attachedDocMeta.type,
+                        title: attachedFiles.length === 1 
+                          ? `Draft Package: ${attachedFiles[0].name}` 
+                          : `Corpus Package (${attachedFiles.length} Files): ${attachedFiles.map(f => f.name).join(', ')}`,
+                        docType: attachedFiles.length > 1 ? 'Multi-Document Dossier' : attachedFiles[0].typeLabel,
                         operationType: selectedOperation,
-                        originalFileName: attachedDocMeta.name,
+                        originalFileName: attachedFiles.map(f => f.name).join(', '),
+                        docNames: attachedFiles.map(f => f.name),
+                        docCount: attachedFiles.length,
                         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        contentMarkdown: `# Attached Research Document: ${attachedDocMeta.name}\n- **Format:** ${attachedDocMeta.type}\n- **File Size:** ${attachedDocMeta.size}\n- **Configured Operation:** \`${selectedOperation.replace(/_/g, ' ').toUpperCase()}\`${docCustomInstructions ? `\n- **Custom Instruction:** "${docCustomInstructions}"` : ''}\n\n*Document ingested into Synapse OS BloxBot Workspace.*`
+                        contentMarkdown: `# Attached Research Documents (${attachedFiles.length} Files)\n${attachedFiles.map((f, i) => `${i + 1}. **${f.name}** (${f.typeLabel} • ${f.size})`).join('\n')}\n\n- **Configured Operation:** \`${selectedOperation.replace(/_/g, ' ').toUpperCase()}\`${docCustomInstructions ? `\n- **Custom Instruction:** "${docCustomInstructions}"` : ''}\n\n*Documents ingested into Synapse OS BloxBot Multi-Document Workspace.*`
                       };
                       handleDirectExportDoc(dynamicDoc, fmt);
                     }}
@@ -1029,14 +1176,42 @@ export default function RobloxGuideBot({
                   >
                     <span>{showOperationPicker ? 'Hide Controls' : 'Configure & Run'}</span>
                   </button>
+
                   <button
-                    onClick={handleRemoveFile}
+                    onClick={handleClearAllFiles}
                     className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                    title="Remove Document"
+                    title="Remove All Attached Files"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
+              </div>
+
+              {/* Scrollable File Badges Carousel */}
+              <div className="flex items-center gap-1.5 overflow-x-auto py-1 no-scrollbar">
+                {attachedFiles.map((item) => (
+                  <div
+                    key={item.id}
+                    className="shrink-0 flex items-center gap-1.5 px-2 py-1 bg-[#121622] border border-slate-700/80 rounded-lg text-slate-200 group hover:border-sky-500/60 transition-colors max-w-[200px]"
+                  >
+                    <span className={`px-1 py-0.2 rounded text-[8px] font-mono font-bold border ${item.badgeColor}`}>
+                      {item.typeLabel}
+                    </span>
+                    <span className="text-[10px] font-mono truncate text-white" title={item.name}>
+                      {item.name}
+                    </span>
+                    <span className="text-[8px] font-mono text-slate-400 shrink-0">
+                      {item.size}
+                    </span>
+                    <button
+                      onClick={() => handleRemoveFile(item.id)}
+                      className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors ml-0.5"
+                      title="Remove this file"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
 
               {/* Custom Instructions & Quick Operation Picker Matrix */}
@@ -1047,7 +1222,7 @@ export default function RobloxGuideBot({
                     <div className="flex items-center justify-between">
                       <label className="text-[10px] font-mono font-bold text-sky-300 flex items-center gap-1">
                         <Sparkles className="w-3 h-3 text-amber-400" />
-                        Custom Instruction for Ingested Document:
+                        Custom Instruction for {attachedFiles.length > 1 ? `${attachedFiles.length} Attached Documents:` : 'Ingested Document:'}
                       </label>
                       <span className="text-[9px] font-mono text-slate-400">Optional prompt overrides</span>
                     </div>
@@ -1055,7 +1230,10 @@ export default function RobloxGuideBot({
                     <textarea
                       value={docCustomInstructions}
                       onChange={(e) => setDocCustomInstructions(e.target.value)}
-                      placeholder="e.g. 'Focus on sample size calculation, check for ANOVA assumptions, and write APA 7th style results...'"
+                      placeholder={attachedFiles.length > 1 
+                        ? "e.g. 'Compare findings across all attached documents, extract consensus hypotheses, and generate APA 7th synthesis...'"
+                        : "e.g. 'Focus on sample size calculation, check for ANOVA assumptions, and write APA 7th style results...'"
+                      }
                       rows={2}
                       className="w-full bg-[#07080A] border border-slate-700 text-slate-200 text-[11px] font-sans rounded-md p-1.5 focus:outline-none focus:border-sky-500 resize-none"
                     />
@@ -1063,10 +1241,11 @@ export default function RobloxGuideBot({
                     {/* Quick suggestion prompt chips */}
                     <div className="flex flex-wrap items-center gap-1">
                       {[
-                        'Strict APA 7th Statistical Output',
-                        'Extract 3 Testable Hypotheses',
+                        attachedFiles.length > 1 ? 'Comparative Multi-Doc Matrix' : 'Strict APA 7th Statistical Output',
+                        'Extract Testable Hypotheses',
                         'Check ANOVA / Normality Assumptions',
-                        'Synthesize Executive 5-Point Summary'
+                        'Synthesize Executive 5-Point Summary',
+                        'Harmonize Cross-Document Datasets'
                       ].map((chip) => (
                         <button
                           key={chip}
@@ -1083,7 +1262,7 @@ export default function RobloxGuideBot({
                   {/* Operation Picker Grid */}
                   <div className="flex flex-col gap-1">
                     <span className="text-[9.5px] font-mono uppercase text-slate-400 tracking-wider">
-                      Select Autonomous BloxBot Operation to Run:
+                      Select Autonomous BloxBot Operation to Run on {attachedFiles.length} Document{attachedFiles.length > 1 ? 's' : ''}:
                     </span>
                     <div className="grid grid-cols-2 gap-1.5">
                       {operationsList.map((op) => {
@@ -1126,14 +1305,19 @@ export default function RobloxGuideBot({
             {/* Document Upload Button */}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className={`p-2.5 rounded-xl border transition-all flex items-center justify-center ${
-                attachedFile 
+              className={`p-2.5 rounded-xl border transition-all flex items-center justify-center relative ${
+                attachedFiles.length > 0
                   ? 'bg-sky-500 text-white border-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.5)]'
                   : 'bg-slate-800 hover:bg-slate-700 text-sky-400 border-slate-700'
               }`}
-              title="Attach Document (PDF, Word, CSV, TXT)"
+              title="Attach Multiple Documents in Any Format (PDF, DOCX, XLSX, SAV, CSV, JSON, MD, TXT, etc.)"
             >
               <Paperclip className="w-4 h-4" />
+              {attachedFiles.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-amber-400 text-slate-950 text-[9px] font-bold font-mono rounded-full w-4 h-4 flex items-center justify-center shadow">
+                  {attachedFiles.length}
+                </span>
+              )}
             </button>
 
             {/* Microphone Button */}
@@ -1155,7 +1339,7 @@ export default function RobloxGuideBot({
               onChange={(e) => setInputQuery(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  if (attachedFile) {
+                  if (attachedFiles.length > 0) {
                     handleExecuteDocOperation(selectedOperation || 'custom_query', inputQuery);
                   } else {
                     handleAsk();
@@ -1165,9 +1349,9 @@ export default function RobloxGuideBot({
               placeholder={
                 isListening 
                   ? "Listening to your voice..." 
-                  : attachedFile 
-                    ? "Type custom instruction or press send for SPSS / Analysis..." 
-                    : "Speak or type research query, or attach document..."
+                  : attachedFiles.length > 0
+                    ? `${attachedFiles.length} document${attachedFiles.length > 1 ? 's' : ''} attached • Press Enter to run ${selectedOperation.replace(/_/g, ' ')}...`
+                    : "Speak or type research query, or attach multiple documents in any format..."
               }
               className={`flex-1 bg-[#050609] border focus:border-sky-500 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 outline-none font-sans ${
                 isListening ? 'border-rose-500/60 bg-rose-950/20' : 'border-slate-800'
@@ -1176,13 +1360,13 @@ export default function RobloxGuideBot({
             
             <button
               onClick={() => {
-                if (attachedFile) {
+                if (attachedFiles.length > 0) {
                   handleExecuteDocOperation(selectedOperation || 'custom_query', inputQuery);
                 } else {
                   handleAsk();
                 }
               }}
-              disabled={loading || isAutoResearching || (!inputQuery.trim() && !attachedFile)}
+              disabled={loading || isAutoResearching || (!inputQuery.trim() && attachedFiles.length === 0)}
               className="p-2.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white rounded-xl transition-all cursor-pointer shadow-md"
               title="Send to BloxBot"
             >

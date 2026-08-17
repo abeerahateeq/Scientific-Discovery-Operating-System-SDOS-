@@ -26,6 +26,8 @@ export interface BloxBotExportableDocument {
   docType?: string;
   operationType?: string;
   originalFileName?: string;
+  docNames?: string[];
+  docCount?: number;
   timestamp: string;
   contentMarkdown: string;
   spssPackage?: any;
@@ -1313,7 +1315,9 @@ version: "2.4.0"
                   }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    {doc.operationType === 'generate_thesis' ? (
+                    {doc.docCount && doc.docCount > 1 ? (
+                      <Layers className="w-4 h-4 text-sky-400 shrink-0" />
+                    ) : doc.operationType === 'generate_thesis' ? (
                       <GraduationCap className="w-4 h-4 text-amber-400 shrink-0" />
                     ) : doc.spssPackage ? (
                       <Calculator className="w-4 h-4 text-indigo-400 shrink-0" />
@@ -1323,7 +1327,14 @@ version: "2.4.0"
                       <FileText className="w-4 h-4 text-sky-400 shrink-0" />
                     )}
                     <div className="min-w-0">
-                      <p className="text-xs font-mono truncate">{doc.title}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-mono truncate">{doc.title}</p>
+                        {doc.docCount && doc.docCount > 1 && (
+                          <span className="bg-sky-500/20 text-sky-300 text-[8px] font-mono px-1 py-0.2 rounded font-bold border border-sky-500/30 shrink-0">
+                            {doc.docCount} docs
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[9px] font-mono text-slate-500">
                         {doc.originalFileName ? `${doc.originalFileName} • ` : ''}{doc.timestamp}
                       </p>
